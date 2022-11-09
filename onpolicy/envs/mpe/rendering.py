@@ -41,6 +41,12 @@ def get_display(spec):
     else:
         raise error.Error('Invalid display specification: {}. (Must be a string like :0 or None.)'.format(spec))
 
+class DrawText:
+    def __init__(self, label:pyglet.text.Label):
+        self.label=label
+    def render(self):
+        self.label.draw()
+        
 class Viewer(object):
     def __init__(self, width, height, display=None):
         display = get_display(display)
@@ -83,11 +89,19 @@ class Viewer(object):
         self.onetime_geoms.append(geom)
 
     def render(self, return_rgb_array=False):
-        glClearColor(1,1,1,1)
+        glClearColor(1,1,1,1)        
         self.window.clear()
         self.window.switch_to()
         self.window.dispatch_events()
         self.transform.enable()
+        label = pyglet.text.Label('Hello, world!',
+                          font_size=36,
+                          x=self.window.width // 2,
+                          y=self.window.height // 2,
+                          anchor_x='center',
+                          anchor_y='center')
+        label.draw()
+        self.add_geom(DrawText(label))
         for geom in self.geoms:
             geom.render()
         for geom in self.onetime_geoms:

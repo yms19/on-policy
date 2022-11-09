@@ -6,6 +6,8 @@ import socket
 import setproctitle
 import numpy as np
 from pathlib import Path
+from pyvirtualdisplay.smartdisplay import SmartDisplay
+import time
 
 import torch
 
@@ -37,6 +39,14 @@ def parse_args(args, parser):
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument('--num_agents', type=int,
                         default=2, help="number of players")
+    parser.add_argument('--num_good_agents', type=int,
+                        default=4, help="number of players")
+    parser.add_argument('--num_adversaries', type=int,
+                        default=1, help="number of adversaries")
+    parser.add_argument('--num_bubbles', type=int,
+                        default=2, help="number of adversaries")
+    parser.add_argument('--d_range', type=float,
+                        default=1, help="detection range of players")
 
     all_args = parser.parse_known_args(args)[0]
 
@@ -44,8 +54,12 @@ def parse_args(args, parser):
 
 
 def main(args):
+
     parser = get_config()
     all_args = parse_args(args, parser)
+
+    display = SmartDisplay()
+    display.start()
 
     if all_args.algorithm_name == "rmappo" or all_args.algorithm_name == "rmappg":
         assert (
@@ -60,7 +74,7 @@ def main(args):
         "The simple_speaker_listener scenario can not use shared policy. Please check the config.py.")
 
     assert all_args.use_render, ("u need to set use_render be True")
-    assert not (all_args.model_dir == None or all_args.model_dir == ""), ("set model_dir first")
+    # assert not (all_args.model_dir == None or all_args.model_dir == ""), ("set model_dir first")
     assert all_args.n_rollout_threads==1, ("only support to use 1 env to render.")
     
     # cuda
@@ -122,10 +136,12 @@ def main(args):
         from onpolicy.runner.separated.mpe_runner import MPERunner as Runner
 
     runner = Runner(config)
-    runner.render()
+    runner.render(display)
     
     # post process
     envs.close()
+    display.stop()
+    
 
 if __name__ == "__main__":
     main(sys.argv[1:])

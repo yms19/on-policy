@@ -2,6 +2,7 @@ import time
 import numpy as np
 import torch
 from onpolicy.runner.shared.base_runner import Runner
+from pyvirtualdisplay.smartdisplay import SmartDisplay
 import wandb
 import imageio
 
@@ -44,6 +45,7 @@ class MPERunner(Runner):
             
             # save model
             if (episode % self.save_interval == 0 or episode == episodes - 1):
+                print("\nModel save to {}".format(self.save_dir))
                 self.save()
 
             # log information
@@ -88,7 +90,9 @@ class MPERunner(Runner):
             share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
         else:
             share_obs = obs
-
+        # print(self.buffer.share_obs[0].shape)
+        # print(share_obs.shape)
+        # print(obs.shape)
         self.buffer.share_obs[0] = share_obs.copy()
         self.buffer.obs[0] = obs.copy()
 
@@ -183,7 +187,7 @@ class MPERunner(Runner):
         self.log_env(eval_env_infos, total_num_steps)
 
     @torch.no_grad()
-    def render(self):
+    def render(self, display):
         """Visualize the env."""
         envs = self.envs
         
@@ -191,8 +195,11 @@ class MPERunner(Runner):
         for episode in range(self.all_args.render_episodes):
             obs = envs.reset()
             if self.all_args.save_gifs:
-                image = envs.render('rgb_array')[0][0]
-                all_frames.append(image)
+                # image = envs.render('rgb_array')[0][0]
+                # all_frames.append(image)
+                envs.render('rgb_array')
+                all_frames.append(display.waitgrab())
+                time.sleep(0.02)
             else:
                 envs.render('human')
 
@@ -205,24 +212,26 @@ class MPERunner(Runner):
                 calc_start = time.time()
 
                 self.trainer.prep_rollout()
-                action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
-                                                    np.concatenate(rnn_states),
-                                                    np.concatenate(masks),
-                                                    deterministic=True)
-                actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
-                rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+                # action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
+                #                                     np.concatenate(rnn_states),
+                #                                     np.concatenate(masks),
+                #                                     deterministic=True)
+                # actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
+                # rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
 
-                if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
-                    for i in range(envs.action_space[0].shape):
-                        uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
-                        if i == 0:
-                            actions_env = uc_actions_env
-                        else:
-                            actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
-                elif envs.action_space[0].__class__.__name__ == 'Discrete':
-                    actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
-                else:
-                    raise NotImplementedError
+                # if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
+                #     for i in range(envs.action_space[0].shape):
+                #         uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
+                #         if i == 0:
+                #             actions_env = uc_actions_env
+                #         else:
+                #             actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+                # elif envs.action_space[0].__class__.__name__ == 'Discrete':
+                #     actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
+                # else:
+                #     raise NotImplementedError
+
+                actions_env = np.zeros(shape=(self.num_agents, 5))
 
                 # Obser reward and next obs
                 obs, rewards, dones, infos = envs.step(actions_env)
@@ -233,8 +242,12 @@ class MPERunner(Runner):
                 masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
                 if self.all_args.save_gifs:
-                    image = envs.render('rgb_array')[0][0]
-                    all_frames.append(image)
+                    # image = envs.render('rgb_array')[0][0]
+                    # all_frames.append(image)
+                    envs.render('rgb_array')
+                    all_frames.append(display.waitgrab())
+                    time.sleep(0.02)
+
                     calc_end = time.time()
                     elapsed = calc_end - calc_start
                     if elapsed < self.all_args.ifi:
@@ -246,3 +259,4 @@ class MPERunner(Runner):
 
         if self.all_args.save_gifs:
             imageio.mimsave(str(self.gif_dir) + '/render.gif', all_frames, duration=self.all_args.ifi)
+        

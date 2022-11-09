@@ -55,6 +55,14 @@ def parse_args(args, parser):
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument('--num_agents', type=int,
                         default=2, help="number of players")
+    parser.add_argument('--num_good_agents', type=int,
+                        default=4, help="number of players")
+    parser.add_argument('--num_adversaries', type=int,
+                        default=1, help="number of adversaries")
+    parser.add_argument('--d_range', type=float,
+                        default=1, help="detection range of players")
+    parser.add_argument('--num_bubbles', type=int,
+                        default=2, help="number of adversaries")
 
     all_args = parser.parse_known_args(args)[0]
 

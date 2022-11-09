@@ -100,6 +100,8 @@ class Agent(Entity):
         self.c_noise = None
         # control range
         self.u_range = 1.0
+        # detect_range
+        self.d_range = None
         # state: including communication state(communication utterance) c and internal/mental state p_pos, p_vel
         self.state = AgentState()
         # action: physical action u & communication action c
@@ -123,7 +125,7 @@ class World(object):
         # color dimensionality
         self.dim_color = 3
         # simulation timestep
-        self.dt = 0.1
+        self.dt = 4.5 # 0.1
         # physical damping（阻尼）
         self.damping = 0.25
         # contact response parameters
@@ -182,19 +184,19 @@ class World(object):
 
     def assign_agent_colors(self):
         n_dummies = 0
-        if hasattr(self.agents[0], 'dummy'):
+        if hasattr(self.agents[-1], 'dummy'):
             n_dummies = len([a for a in self.agents if a.dummy])
         n_adversaries = 0
         if hasattr(self.agents[0], 'adversary'):
             n_adversaries = len([a for a in self.agents if a.adversary])
         n_good_agents = len(self.agents) - n_adversaries - n_dummies
         # r g b
-        dummy_colors = [(0.25, 0.75, 0.25)] * n_dummies
+        dummy_colors = [(0.25, 0.25, 0.25)] * n_dummies
         # sns.color_palette("OrRd_d", n_adversaries)
         adv_colors = [(0.75, 0.25, 0.25)] * n_adversaries
         # sns.color_palette("GnBu_d", n_good_agents)
         good_colors = [(0.25, 0.25, 0.75)] * n_good_agents
-        colors = dummy_colors + adv_colors + good_colors
+        colors =  adv_colors + good_colors + dummy_colors
         for color, agent in zip(colors, self.agents):
             agent.color = color
 
@@ -209,15 +211,18 @@ class World(object):
         self.world_step += 1
         # set actions for scripted agents
         for agent in self.scripted_agents:
-            agent.action = agent.action_callback(agent, self)
+            # agent.action = agent.action_callback(agent, self)
+            agent.action_callback(agent, self)
         # gather forces applied to entities
         p_force = [None] * len(self.entities)
         # apply agent physical controls
         p_force = self.apply_action_force(p_force)
         # apply environment forces
-        p_force = self.apply_environment_force(p_force)
+        # p_force = self.apply_environment_force(p_force)
+
         # integrate physical state
         self.integrate_state(p_force)
+
         # update agent state
         for agent in self.agents:
             self.update_agent_state(agent)

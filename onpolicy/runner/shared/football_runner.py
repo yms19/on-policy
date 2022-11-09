@@ -21,7 +21,7 @@ class FootballRunner(Runner):
         self.env_infos = defaultdict(list)
        
     def run(self):
-        self.warmup()   
+        self.warmup()   # reset环境并将初始obs存入buffer
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
@@ -32,7 +32,7 @@ class FootballRunner(Runner):
 
             for step in range(self.episode_length):
                 # Sample actions
-                values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step)
+                values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step) # 利用Buffer中的数据算出新的data
                     
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
@@ -40,11 +40,11 @@ class FootballRunner(Runner):
                 data = obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic 
                 
                 # insert data into buffer
-                self.insert(data)
+                self.insert(data) # 将新的数据存入buffer的下一格中
 
             # compute return and update network
-            self.compute()
-            train_infos = self.train()
+            self.compute() # 计算return
+            train_infos = self.train() # 更新网络
             
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
@@ -86,7 +86,7 @@ class FootballRunner(Runner):
 
     @torch.no_grad()
     def collect(self, step):
-        self.trainer.prep_rollout()
+        self.trainer.prep_rollout() # 将actor和critic转为eval()
 
         # [n_envs, n_agents, ...] -> [n_envs*n_agents, ...]
         values, actions, action_log_probs, rnn_states, rnn_states_critic = self.trainer.policy.get_actions(
@@ -95,7 +95,7 @@ class FootballRunner(Runner):
             np.concatenate(self.buffer.rnn_states[step]),
             np.concatenate(self.buffer.rnn_states_critic[step]),
             np.concatenate(self.buffer.masks[step])
-        )
+        ) # 根据buffer中的数据，从actor和critic中获得动作概率和动作价值
 
         # [n_envs*n_agents, ...] -> [n_envs, n_agents, ...]
         values = np.array(np.split(_t2n(values), self.n_rollout_threads))
@@ -112,7 +112,7 @@ class FootballRunner(Runner):
         obs, rewards, dones, infos, values, actions, action_log_probs, rnn_states, rnn_states_critic = data
         
         # update env_infos if done
-        dones_env = np.all(dones, axis=-1)
+        dones_env = np.all(dones, axis=-1) # dones:(n_rollout,n_agents) dones_env:(n_rollout) 找到所有agents都done了的环境
         if np.any(dones_env):
             for done, info in zip(dones_env, infos):
                 if done:
@@ -124,7 +124,7 @@ class FootballRunner(Runner):
                     self.env_infos["steps"].append(info["max_steps"] - info["steps_left"])
 
         # reset rnn and mask args for done envs
-        rnn_states[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
+        rnn_states[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32) #rnn_states:(n_rollout, n_agents,1 ,64)
         rnn_states_critic[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones_env == True] = np.zeros(((dones_env == True).sum(), self.num_agents, 1), dtype=np.float32)
@@ -132,14 +132,14 @@ class FootballRunner(Runner):
         self.buffer.insert(
             share_obs=obs,
             obs=obs,
-            rnn_states=rnn_states,
+            rnn_states_actor=rnn_states,
             rnn_states_critic=rnn_states_critic,
             actions=actions,
             action_log_probs=action_log_probs,
             value_preds=values,
             rewards=rewards,
             masks=masks
-        )
+        ) # 在buffer中插入新数据
 
     def log_env(self, env_infos, total_num_steps):
         for k, v in env_infos.items():

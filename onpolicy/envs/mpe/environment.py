@@ -3,6 +3,7 @@ from gym import spaces
 from gym.envs.registration import EnvSpec
 import numpy as np
 from .multi_discrete import MultiDiscrete
+import pyglet
 
 # update bounds to center around agent
 cam_range = 2
@@ -135,6 +136,8 @@ class MultiAgentEnv(gym.Env):
             env_info = self._get_info(agent)
             if 'fail' in env_info.keys():
                 info['fail'] = env_info['fail']
+            if 'detect_adversary' in env_info.keys():
+                info['detect_adversary'] = env_info['detect_adversary']
             info_n.append(info)
 
         # all agents get total reward in cooperative case, if shared reward, all agents have the same reward, and reward is sum
@@ -303,6 +306,7 @@ class MultiAgentEnv(gym.Env):
             self.render_geoms_xform = []
 
             self.comm_geoms = []
+            self.comm_geoms_xform = []
 
             for entity in self.world.entities:
                 geom = rendering.make_circle(entity.size)
@@ -326,6 +330,27 @@ class MultiAgentEnv(gym.Env):
                                                    entity.size + comm_size, 0)
                             comm.add_attr(offset)
                             entity_comm_geoms.append(comm)
+                    
+                    if entity.d_range is not None:
+                        d_range = entity.d_range if entity.d_range > entity.size else entity.size
+                        comm = rendering.make_circle(d_range, filled=False)
+                        comm.set_color(0, 0, 0)
+                        comm.add_attr(xform)
+                        entity_comm_geoms.append(comm)
+                    
+                    if entity.adversary:
+                        guess_center = (0.5, 0.5)
+                        init_range = 0.5
+                        # guess_v = 0.1
+                        # radius = init_range + self.current_step * guess_v
+                        comm = rendering.make_circle(init_range)
+                        comm.set_color(0.2, 0.2, 0.2, alpha=0.2)
+                        new_pos = rendering.Transform()
+                        new_pos.set_translation(*guess_center)
+                        comm.add_attr(new_pos)
+                        entity_comm_geoms.append(comm)
+                        self.comm_geoms_xform.append(new_pos)
+
 
                 else:
                     geom.set_color(*entity.color)
@@ -377,6 +402,7 @@ class MultiAgentEnv(gym.Env):
                         viewer.add_geom(geom)
 
         results = []
+        
         for i in range(len(self.viewers)):
             from . import rendering
 
@@ -396,7 +422,7 @@ class MultiAgentEnv(gym.Env):
                         for ci in range(self.world.dim_c):
                             color = 1 - entity.state.c[ci]
                             self.comm_geoms[e][ci].set_color(
-                                color, color, color)
+                                color, color, color)                    
                 else:
                     self.render_geoms[e].set_color(*entity.color)
                     if entity.channel is not None:
@@ -404,6 +430,9 @@ class MultiAgentEnv(gym.Env):
                             color = 1 - entity.channel[ci]
                             self.comm_geoms[e][ci].set_color(
                                 color, color, color)
+            
+            self.comm_geoms_xform[0].set_scale((1 + 0.01*self.current_step), 
+                                                (1 + 0.01*self.current_step))
 
             # render to display or array
             results.append(self.viewers[i].render(

@@ -1,10 +1,12 @@
     
+from random import random, randint
 import time
 import wandb
 import os
 import numpy as np
 from itertools import chain
 import torch
+from PIL import Image, ImageDraw, ImageFont
 
 from onpolicy.utils.util import update_linear_schedule
 from onpolicy.runner.separated.base_runner import Runner
@@ -236,47 +238,124 @@ class MPERunner(Runner):
         self.log_train(eval_train_infos, total_num_steps)  
 
     @torch.no_grad()
-    def render(self):        
+    def render(self, display):        
         all_frames = []
         for episode in range(self.all_args.render_episodes):
             episode_rewards = []
             obs = self.envs.reset()
+            infos = [[{'individual_reward': 0, 'detect_adversary': False},
+                    {'individual_reward': 0, 'detect_adversary': False},
+                    {'individual_reward': 0, 'detect_adversary': False},
+                    {'individual_reward': 0, 'detect_adversary': False},
+                    {'individual_reward': 0, 'detect_adversary': False}]]
             if self.all_args.save_gifs:
-                image = self.envs.render('rgb_array')[0][0]
-                all_frames.append(image)
+                # image = self.envs.render('rgb_array')[0][0]
+                # all_frames.append(image)
+                self.envs.render('rgb_array')
+                img = np.array(display.waitgrab())                
+                all_frames.append(img)
+                time.sleep(0.02)
 
             rnn_states = np.zeros((self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
             masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
 
             for step in range(self.episode_length):
                 calc_start = time.time()
-                
+                vels = []
+
                 temp_actions_env = []
                 for agent_id in range(self.num_agents):
-                    if not self.use_centralized_V:
-                        share_obs = np.array(list(obs[:, agent_id]))
-                    self.trainer[agent_id].prep_rollout()
-                    action, rnn_state = self.trainer[agent_id].policy.act(np.array(list(obs[:, agent_id])),
-                                                                        rnn_states[:, agent_id],
-                                                                        masks[:, agent_id],
-                                                                        deterministic=True)
+                    # if not self.use_centralized_V:
+                    #     share_obs = np.array(list(obs[:, agent_id]))
+                    # self.trainer[agent_id].prep_rollout()
+                    # action, rnn_state = self.trainer[agent_id].policy.act(np.array(list(obs[:, agent_id])),
+                    #                                                     rnn_states[:, agent_id],
+                    #                                                     masks[:, agent_id],
+                    #                                                     deterministic=True)
 
-                    action = action.detach().cpu().numpy()
-                    # rearrange action
-                    if self.envs.action_space[agent_id].__class__.__name__ == 'MultiDiscrete':
-                        for i in range(self.envs.action_space[agent_id].shape):
-                            uc_action_env = np.eye(self.envs.action_space[agent_id].high[i]+1)[action[:, i]]
-                            if i == 0:
-                                action_env = uc_action_env
+                    # action = action.detach().cpu().numpy()
+                    # # rearrange action
+                    # if self.envs.action_space[agent_id].__class__.__name__ == 'MultiDiscrete':
+                    #     for i in range(self.envs.action_space[agent_id].shape):
+                    #         uc_action_env = np.eye(self.envs.action_space[agent_id].high[i]+1)[action[:, i]]
+                    #         if i == 0:
+                    #             action_env = uc_action_env
+                    #         else:
+                    #             action_env = np.concatenate((action_env, uc_action_env), axis=1)
+                    # elif self.envs.action_space[agent_id].__class__.__name__ == 'Discrete':
+                    #     action_env = np.squeeze(np.eye(self.envs.action_space[agent_id].n)[action], 1)
+                    # else:
+                    #     raise NotImplementedError
+                    adv_x = 4
+                    adv_y = 5
+                    adv_strategy = 'escape_nearest'
+                    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
+                    guess_center = (0.5, 0.5)
+                    action_env = np.zeros(shape=(1, 5))                    
+                    if agent_id == 0:
+                        vel = np.sqrt(np.sum(np.square([obs[0][agent_id][0], obs[0][agent_id][1]]))) / 0.05 * 1000
+                        vels.append(vel)
+                        if adv_strategy == 'random':
+                            action_env[0][np.random.randint(5)]=1
+                        elif adv_strategy == 'escape_nearest':
+                            dists = []
+                            for i in range(1, self.num_agents):
+                                if obs[0][agent_id][2+2*i]==0 and obs[0][agent_id][3+2*i]==0:
+                                    dist = 100 # mask
+                                else:
+                                    dist = np.sqrt(np.sum(np.square([obs[0][agent_id][2+2*i], obs[0][agent_id][3+2*i]])))
+                                dists.append(dist)
+                            nearest_index = np.argmin(np.array(dists)) + 1
+                            if dists[nearest_index-1] == 100: # all good agents' position are masked
+                                action_env[0][np.random.randint(5)]=1
                             else:
-                                action_env = np.concatenate((action_env, uc_action_env), axis=1)
-                    elif self.envs.action_space[agent_id].__class__.__name__ == 'Discrete':
-                        action_env = np.squeeze(np.eye(self.envs.action_space[agent_id].n)[action], 1)
-                    else:
-                        raise NotImplementedError
+                                if abs(obs[0][agent_id][2+2*nearest_index]) > abs(obs[0][agent_id][3+2*nearest_index]):
+                                    i = 1 if obs[0][agent_id][2+2*nearest_index] < 0 else 2 
+                                    action_env[0][i]=1
+                                else:
+                                    i = 3 if obs[0][agent_id][3+2*nearest_index] < 0 else 4
+                                    action_env[0][i]=1 
 
+                        elif adv_strategy == 'escape_group':
+                            dists = []
+                            for i in range(1, self.num_agents):
+                                if obs[0][agent_id][2+2*i]==0 and obs[0][agent_id][3+2*i]==0:
+                                    dist = 100 # mask
+                                else:
+                                    dist = np.sqrt(np.sum(np.square([obs[0][agent_id][2+2*i], obs[0][agent_id][3+2*i]])))
+                                dists.append(dist)
+                            if min(dists) == 100:
+                                action_env[0][np.random.randint(5)]=1
+                            else:
+                                dists_reciprocal = [1/x for x in dists]
+                                dists_reciprocal_sum = np.sum(dists_reciprocal)
+                                dists_reciprocal_norm = [x/dists_reciprocal_sum for x in dists_reciprocal]
+                                for index in range(1, self.num_agents):
+                                    if abs(obs[0][agent_id][2+2*index]) > abs(obs[0][agent_id][3+2*index]):
+                                        i = 1 if obs[0][agent_id][2+2*index] < 0 else 2 
+                                        action_env[0][i]+=1*dists_reciprocal_norm[index-1]
+                                    else:
+                                        i = 3 if obs[0][agent_id][3+2*index] < 0 else 4
+                                        action_env[0][i]+=1*dists_reciprocal_norm[index-1]
+                        else:
+                            raise NotImplementedError("Unknown Strategy!")
+                    else:
+                        # if infos[0][agent_id]['detect_adversary'] == True:
+                        #     action_env[0][0]=1
+                        # else:
+                        vel = np.sqrt(np.sum(np.square([obs[0][agent_id][0], obs[0][agent_id][1]]))) / 0.05 * 1000
+                        vels.append(vel)
+                        if obs[0][agent_id][adv_x] == 0 and obs[0][agent_id][adv_y] == 0:
+                            obs[0][agent_id][adv_x] = guess_center[0] + init_pos[agent_id-1][0] - obs[0][agent_id][2]
+                            obs[0][agent_id][adv_y] = guess_center[1] + init_pos[agent_id-1][1] - obs[0][agent_id][3]
+                        if abs(obs[0][agent_id][adv_x]) > abs(obs[0][agent_id][adv_y]):
+                            i = 1 if obs[0][agent_id][adv_x] > 0 else 2 
+                            action_env[0][i]=1
+                        else:
+                            i = 3 if obs[0][agent_id][adv_y] > 0 else 4 
+                            action_env[0][i]=1
                     temp_actions_env.append(action_env)
-                    rnn_states[:, agent_id] = _t2n(rnn_state)
+                    # rnn_states[:, agent_id] = _t2n(rnn_state)
                    
                 # [envs, agents, dim]
                 actions_env = []
@@ -285,7 +364,7 @@ class MPERunner(Runner):
                     for temp_action_env in temp_actions_env:
                         one_hot_action_env.append(temp_action_env[i])
                     actions_env.append(one_hot_action_env)
-
+                
                 # Obser reward and next obs
                 obs, rewards, dones, infos = self.envs.step(actions_env)
                 episode_rewards.append(rewards)
@@ -294,9 +373,24 @@ class MPERunner(Runner):
                 masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
                 masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
+                agent_info = "agent{} :   velocity : {}m/s    detect the adversary : {}"
+                adversary_info = "velocity : {}m/s    detect the adversary : {}"
+                environment_info = "time : {} min {} s  success : {}    failure : {}    win rate : {}"
                 if self.all_args.save_gifs:
-                    image = self.envs.render('rgb_array')[0][0]
-                    all_frames.append(image)
+                    # image = self.envs.render('rgb_array')[0][0]
+                    # all_frames.append(image)
+                    self.envs.render('rgb_array')
+                    # all_frames.append(np.array(display.waitgrab()))
+                    img = np.array(display.waitgrab())                
+                    img_pil = Image.fromarray(img, mode='RGB')
+                    ttf = ImageFont.load_default()
+                    img_draw = ImageDraw.Draw(img_pil)
+                    for i in range(self.num_agents):                        
+                        img_draw.text((20, 20+15*i), agent_info.format(i, vels[i], infos[0][i]["detect_adversary"]), font=ttf, fill=(0, 0, 0))
+                    img_draw.text((20, 95), environment_info.format(int(step*4.5/60), step*4.5%60, 0, 0, 0), font=ttf, fill=(0, 0, 0))
+                    img_text = np.asarray(img_pil)
+                    all_frames.append(img_text)
+                    time.sleep(0.02)
                     calc_end = time.time()
                     elapsed = calc_end - calc_start
                     if elapsed < self.all_args.ifi:
