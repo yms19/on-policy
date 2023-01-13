@@ -277,8 +277,6 @@ class MultiAgentEnv(gym.Env):
     
     def _set_available_action(self, agent, action_space):
         avail_action = np.ones((action_space.n))
-        if self.current_step < 100:
-            avail_action[5] = 0
         if agent.detected:
             avail_action[:5] = np.zeros((5))
             if agent.dtime >= 180:
@@ -372,7 +370,7 @@ class MultiAgentEnv(gym.Env):
                         entity_comm_geoms.append(comm)
                     
                     if entity.adversary:
-                        guess_center = entity.init_pos
+                        guess_center = (0.5, 0.5)
                         init_range = 0.5
                         guess_v = 5.56 # m/s
                         run_dis = (840 + self.world.dt * self.current_step) *  guess_v / 1000 * 0.05
@@ -400,19 +398,6 @@ class MultiAgentEnv(gym.Env):
                         pos.set_translation(*guess_center)
                         area.add_attr(pos)
                         entity_comm_geoms.append(area)
-
-                        init_pos = entity.init_pos
-                        left = - 0.3
-                        right = + 0.8
-                        up =  + 0.65
-                        down =  - 0.3
-                        range_points = ((left, up), (right, up), (right, down), (left, down))
-                        range_ = rendering.make_polygon(range_points, filled=False)
-                        range_.set_color(0, 0, 0)
-                        range_form = rendering.Transform()
-                        range_form.set_translation(*init_pos)
-                        range_.add_attr(range_form)
-                        entity_comm_geoms.append(range_)
 
 
                 else:

@@ -4,7 +4,6 @@ import torch
 from onpolicy.runner.shared.base_runner import Runner
 from pyvirtualdisplay.smartdisplay import SmartDisplay
 from PIL import Image, ImageDraw, ImageFont
-import wandb
 import imageio
 import pdb
 
@@ -55,8 +54,6 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
                 else:
                     i = 3 if obs[3+2*index] < 0 else 4
                     action_env[i]+=1*dists_reciprocal_norm[index-1]
-    elif adv_strategy == "stop":
-        pass
     else:
         raise NotImplementedError("Unknown Strategy!")
 
@@ -106,7 +103,7 @@ class MPERunner(Runner):
                 # Sample actions
                 values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step)
                 for thread_index in range(self.all_args.n_rollout_threads):
-                    actions_env[thread_index][0] = get_adv_action(self.all_args.num_agents, "stop",
+                    actions_env[thread_index][0] = get_adv_action(self.all_args.num_agents, "escape_nearest",
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
                 # pdb.set_trace()
                     
@@ -310,7 +307,7 @@ class MPERunner(Runner):
             
             for step in range(self.episode_length):
                 calc_start = time.time()
-                adv_strategy = 'stop'
+                adv_strategy = 'escape_nearest'
                 mode = "scripts"
                 vels = []
 

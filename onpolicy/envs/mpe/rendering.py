@@ -263,6 +263,17 @@ def make_circle(radius=10, res=30, filled=True):
     else:
         return PolyLine(points, True)
 
+def make_fan(radius=10, angle=2*math.pi, res=30, filled=True):
+    points = []
+    for i in range(res):
+        ang = angle*i / res
+        points.append((math.cos(ang)*radius, math.sin(ang)*radius))
+    points.append((0, 0))
+    if filled:
+        return FilledPolygon(points)
+    else:
+        return PolyLine(points, True)
+
 def make_polygon(v, filled=True):
     if filled: return FilledPolygon(v)
     else: return PolyLine(v, True)

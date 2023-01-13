@@ -143,18 +143,18 @@ def worker(remote, parent_remote, env_fn_wrapper):
     while True:
         cmd, data = remote.recv()
         if cmd == 'step':
-            ob, reward, done, info = env.step(data)
+            ob, reward, done, info, avail_action = env.step(data)
             if 'bool' in done.__class__.__name__:
                 if done:
-                    ob = env.reset()
+                    ob, avail_action = env.reset()
             else:
                 if np.all(done):
-                    ob = env.reset()
+                    ob, avail_action = env.reset()
 
-            remote.send((ob, reward, done, info))
+            remote.send((ob, reward, done, info, avail_action))
         elif cmd == 'reset':
-            ob = env.reset()
-            remote.send((ob))
+            ob, avail_action = env.reset()
+            remote.send((ob, avail_action))
         elif cmd == 'render':
             if data == "rgb_array":
                 fr = env.render(mode=data)
@@ -262,14 +262,15 @@ class SubprocVecEnv(ShareVecEnv):
     def step_wait(self):
         results = [remote.recv() for remote in self.remotes]
         self.waiting = False
-        obs, rews, dones, infos = zip(*results)
-        return np.stack(obs), np.stack(rews), np.stack(dones), infos
+        obs, rews, dones, infos, avail = zip(*results)
+        return np.stack(obs), np.stack(rews), np.stack(dones), infos, np.stack(avail)
 
     def reset(self):
         for remote in self.remotes:
             remote.send(('reset', None))
-        obs = [remote.recv() for remote in self.remotes]
-        return np.stack(obs)
+        results = [remote.recv() for remote in self.remotes]
+        obs, avail = zip(*results)
+        return np.stack(obs), np.stack(avail)
 
 
     def reset_task(self):
@@ -671,22 +672,23 @@ class DummyVecEnv(ShareVecEnv):
 
     def step_wait(self):
         results = [env.step(a) for (a, env) in zip(self.actions, self.envs)]
-        obs, rews, dones, infos = map(np.array, zip(*results))
+        obs, rews, dones, infos, avails = map(np.array, zip(*results))
 
         for (i, done) in enumerate(dones):
             if 'bool' in done.__class__.__name__:
                 if done:
-                    obs[i] = self.envs[i].reset()
+                    obs[i], avails[i] = self.envs[i].reset()
             else:
                 if np.all(done):
-                    obs[i] = self.envs[i].reset()
+                    obs[i], avails[i] = self.envs[i].reset()
 
         self.actions = None
-        return obs, rews, dones, infos
+        return obs, rews, dones, infos, avails
 
     def reset(self):
-        obs = [env.reset() for env in self.envs]
-        return np.array(obs)
+        results = [env.reset() for env in self.envs]
+        obs, avail = zip(*results)
+        return np.array(obs), np.array(avail)
 
     def close(self):
         for env in self.envs:

@@ -41,7 +41,7 @@ def hit(bubble, world):
 # pos: np.array([x, y])
 # time: seconds, time of real world, dt * step_num
 # return: bool, whether the position is within the range of possible existence 
-def adversary_possible_range(init_center, pos, time):
+def adversary_possible_range(pos, time):
 
     def dis(pos1, pos2):
         return np.sqrt(np.sum(np.square(pos1 - pos2)))
@@ -50,6 +50,7 @@ def adversary_possible_range(init_center, pos, time):
         delta_x, delta_y = pos1 - pos2
         return math.atan2(delta_y, delta_x)
     
+    init_center = np.array([0.5, 0.5])
     init_radius = 0.5
     init_angle = math.pi / 4
     velocity = 5.56 # m/s
@@ -75,19 +76,8 @@ def adversary_possible_range(init_center, pos, time):
         else:
             return False
 
-def adversary_init_angle(low, high):
-    return np.random.randint(low, high)/360 * 2 * math.pi
-
-def get_cover_area(agent1, agent2):    
-    dx = abs(agent1.state.p_pos[0] - agent2.state.p_pos[0])
-    dy = abs(agent1.state.p_pos[1] - agent2.state.p_pos[1])    
-    return max((agent1.d_range + agent2.d_range- dx), 0) * max((agent1.d_range + agent2.d_range - dy), 0)
-
-def in_range(left, right, up, down, pos):
-    if pos[0] > left and pos[0] < right and pos[1] > down and pos[1] < up:
-        return True
-    else:
-        return False
+def get_probability_distribution(n):
+    pd = np.zeros((n, n))
 
 
 class Scenario(BaseScenario):
@@ -105,11 +95,6 @@ class Scenario(BaseScenario):
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
         world.world_length = args.episode_length
-        # init_angle = adversary_init_angle(340, 360)
-        init_angle = 0
-        # print("init_angle:", init_angle *180/math.pi)
-        init_pos = [-1, 0.5]
-        init_radius = 0.5
         for i, agent in enumerate(world.agents):
             agent.name = 'agent %d' % i
             agent.collide = True
@@ -127,7 +112,6 @@ class Scenario(BaseScenario):
             agent.detected = True if agent.adversary else False if not agent.dummy else None
             agent.dtime = 0
             agent.dcount = 0
-            agent.init_pos = np.array([init_pos[0]+init_radius*math.cos(init_angle), init_pos[1]+init_radius*math.sin(init_angle)]) if agent.adversary else None
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         for i, landmark in enumerate(world.landmarks):
@@ -148,18 +132,17 @@ class Scenario(BaseScenario):
         # random properties for landmarks
         # set random initial states
         init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
-        init_radius = 1.2
-        init_center = world.agents[0].init_pos
+        init_radius = 0.5
+        init_center = [0.5, 0.5]
         for i, agent in enumerate(world.agents):
             
             if agent.adversary:
+                # x, y = (0.9523768530135464, 0.8105737585294711)
                 x = np.random.uniform(-1, +1) * init_radius + init_center[0]
                 y = np.random.uniform(-1, +1) * init_radius + init_center[1]
-                while not adversary_possible_range(init_center, np.array([x, y]), 840):
+                while not adversary_possible_range(np.array([x, y]), 840):
                     x = np.random.uniform(-1, +1) * init_radius + init_center[0]
                     y = np.random.uniform(-1, +1) * init_radius + init_center[1]
-                # x = 0.63
-                # y = 0.27
                 agent.state.p_pos = np.array([x, y], dtype=float)
                 agent.state.p_vel = np.zeros(world.dim_p)
                 agent.state.c = np.zeros(world.dim_c)
@@ -234,13 +217,10 @@ class Scenario(BaseScenario):
     def agent_reward(self, agent, world):
         # Agents are negatively rewarded if caught by adversaries
         rew = 0
+        init_pos = np.array([0.5, 0.5])
+        init_range = 0.4
         shape = False #different from openai
         adversaries = self.adversaries(world)
-        init_pos = adversaries[0].init_pos
-        left = init_pos[0] - 0.3
-        right = init_pos[0] + 0.8
-        up = init_pos[1] + 0.65
-        down = init_pos[1] - 0.3
         good_agents = self.good_agents(world)
         detect_adversary = False
         if shape:  # reward can optionally be shaped (increased reward for increased distance from adversary)
@@ -268,25 +248,14 @@ class Scenario(BaseScenario):
             x = abs(agent.state.p_pos[p])
             rew -= bound(x)
             
-        # def guide(x):
-        #     if x < init_range:
-        #         return (1.5 - init_range) * 0.1
-        #     else:
-        #         return (1.5 - x) * 0.1
-        # x = np.sqrt(np.sum(np.square(agent.state.p_pos - init_pos)))
-        # rew += guide(x)
+        def guide(x):
+            if x < init_range:
+                return (1.5 - init_range) * 0.1
+            else:
+                return (1.5 - x) * 0.1
+        x = np.sqrt(np.sum(np.square(agent.state.p_pos - init_pos)))
+        rew += guide(x)
 
-        # def area():
-        #     area = 0
-        #     if in_range(left, right, up, down, agent.state.p_pos):
-        #         area = pow(2 * agent.d_range, 2) * 3
-        #         for other in good_agents:
-        #             if other is agent:
-        #                 continue
-        #             else:
-        #                 area -= get_cover_area(agent, other)
-        #     return area
-        # rew += area()
         return rew
 
     def adversary_reward(self, agent, world):
@@ -341,7 +310,7 @@ class Scenario(BaseScenario):
                     other_vel.append(other.state.p_vel)
 
         # return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [self.adversaries(world)[0].init_pos])
+        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel)
     
     def info(self, agent, world):
         info = {'detect_times' : 0,
