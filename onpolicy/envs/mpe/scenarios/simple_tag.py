@@ -148,7 +148,7 @@ class Scenario(BaseScenario):
         # random properties for landmarks
         # set random initial states
         init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
-        init_radius = 1.2
+        init_radius = 1
         init_center = world.agents[0].init_pos
         for i, agent in enumerate(world.agents):
             
@@ -276,17 +276,18 @@ class Scenario(BaseScenario):
         # x = np.sqrt(np.sum(np.square(agent.state.p_pos - init_pos)))
         # rew += guide(x)
 
-        # def area():
-        #     area = 0
-        #     if in_range(left, right, up, down, agent.state.p_pos):
-        #         area = pow(2 * agent.d_range, 2) * 3
-        #         for other in good_agents:
-        #             if other is agent:
-        #                 continue
-        #             else:
-        #                 area -= get_cover_area(agent, other)
-        #     return area
-        # rew += area()
+        def area():
+            area = 0
+            if in_range(left, right, up, down, agent.state.p_pos):
+                area = pow(2 * agent.d_range, 2) * 3
+                for other in good_agents:
+                    if other is agent:
+                        continue
+                    else:
+                        area -= get_cover_area(agent, other)
+            return area
+        rew += area()
+
         return rew
 
     def adversary_reward(self, agent, world):

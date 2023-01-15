@@ -8,7 +8,7 @@ num_adversaries=1
 num_bubbles=2
 d_range=0.25
 algo="rmappo"
-exp="scripts"
+exp="with_detect(max_area_dis)"
 seed_max=1
 
 echo "env is ${env}"
@@ -20,5 +20,5 @@ do
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 307 \
     --n_training_threads 1 --n_rollout_threads 1 --use_render \
     --episode_length 180 --render_episodes 1 --use_wandb \
-    --model_dir "./results/MPE/simple_tag/rmappo/with_detect(0.5)/wandb/run-20230112_172158-1qdnivmp/files"
+    --model_dir "./results/MPE/simple_tag/rmappo/with_detect(max_area_dis)/wandb/latest-run/files"
 done
