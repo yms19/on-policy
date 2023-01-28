@@ -105,8 +105,8 @@ class Scenario(BaseScenario):
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
         world.world_length = args.episode_length
-        # init_angle = adversary_init_angle(340, 360)
-        init_angle = 0
+        init_angle = adversary_init_angle(270, 360)
+        # init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)
         init_pos = [-1, 0.5]
         init_radius = 0.5
@@ -158,8 +158,8 @@ class Scenario(BaseScenario):
                 while not adversary_possible_range(init_center, np.array([x, y]), 840):
                     x = np.random.uniform(-1, +1) * init_radius + init_center[0]
                     y = np.random.uniform(-1, +1) * init_radius + init_center[1]
-                # x = 0.63
-                # y = 0.27
+                # x = -1
+                # y = 0.5
                 agent.state.p_pos = np.array([x, y], dtype=float)
                 agent.state.p_vel = np.zeros(world.dim_p)
                 agent.state.c = np.zeros(world.dim_c)
@@ -301,9 +301,8 @@ class Scenario(BaseScenario):
                 rew -= 0.1 * min([np.sqrt(np.sum(np.square(a.state.p_pos - adv.state.p_pos))) for a in agents])
         if agent.collide:
             for ag in agents:
-                for adv in adversaries:
-                    if self.is_detected(ag, adv):
-                        rew -= 10
+                if ag.detected and self.is_detected(ag, agent):
+                    rew -= 10
         return rew
 
     def observation(self, agent, world):

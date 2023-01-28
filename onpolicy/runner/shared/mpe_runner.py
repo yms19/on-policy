@@ -56,7 +56,7 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
                     i = 3 if obs[3+2*index] < 0 else 4
                     action_env[i]+=1*dists_reciprocal_norm[index-1]
     elif adv_strategy == "stop":
-        pass
+        action_env[0] = 1
     else:
         raise NotImplementedError("Unknown Strategy!")
 
@@ -105,13 +105,15 @@ class MPERunner(Runner):
             for step in range(self.episode_length):
                 # Sample actions
                 values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step)
-                for thread_index in range(self.all_args.n_rollout_threads):
-                    actions_env[thread_index][0] = get_adv_action(self.all_args.num_agents, "stop",
+                actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
+                for thread_index in range(self.all_args.n_rollout_threads):                    
+                    actions_env_adv = get_adv_action(self.all_args.num_agents, "stop",
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
+                    actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                 # pdb.set_trace()
                     
                 # Obser reward and next obs
-                obs, rewards, dones, infos, available_actions = self.envs.step(actions_env)
+                obs, rewards, dones, infos, available_actions = self.envs.step(actions_env_all)
 
                 # print("step%d"%step)
                 # print(obs[0][1],obs[0][2],obs[0][3],obs[0][3])
@@ -168,15 +170,17 @@ class MPERunner(Runner):
     def warmup(self):
         # reset env
         obs, available_actions = self.envs.reset()
-        self.adv_obs = obs[:, 0, :].copy()
-        obs[:, 0, :] = obs[:, 0, :] * 0
+        self.adv_obs = obs[:, 0, :].copy()        
 
         # replay buffer
         if self.use_centralized_V:
-            share_obs = obs[:, 1:, :].reshape(self.n_rollout_threads, -1)
+            share_obs = obs.reshape(self.n_rollout_threads, -1)
             share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
         else:
             share_obs = obs
+
+        obs = obs[:, 1:, :]
+        available_actions = available_actions[:, 1:, :]
         self.buffer.share_obs[0] = share_obs.copy()
         self.buffer.obs[0] = obs.copy()
         self.buffer.available_actions[0] = available_actions.copy()
@@ -215,7 +219,9 @@ class MPERunner(Runner):
     def insert(self, data):
         obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic = data
         self.adv_obs = obs[:, 0, :].copy()
-        obs[:, 0, :] = obs[:, 0, :] * 0
+        dones = dones[:, 1:]
+        rewards = rewards[:, 1:, :]
+        
 
         rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
         rnn_states_critic[dones == True] = np.zeros(((dones == True).sum(), *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
@@ -223,12 +229,12 @@ class MPERunner(Runner):
         masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
         if self.use_centralized_V:
-            share_obs = obs[:, 1:, :].reshape(self.n_rollout_threads, -1)
+            share_obs = obs.reshape(self.n_rollout_threads, -1)
             share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
         else:
             share_obs = obs
 
-        self.buffer.insert(share_obs, obs, rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks, available_actions=available_actions)
+        self.buffer.insert(share_obs, obs[:, 1:, :], rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks, available_actions=available_actions[:, 1:, :])
 
     @torch.no_grad()
     def eval(self, total_num_steps):
@@ -285,7 +291,9 @@ class MPERunner(Runner):
         for episode in range(self.all_args.render_episodes):
             obs, avail_actions = envs.reset()
             self.adv_obs = obs[:, 0, :].copy()
-            obs[:, 0, :] = obs[:, 0, :] * 0
+            obs = obs[:, 1:, :]
+            avail_actions = avail_actions[:, 1:, :]
+            
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
             win = False
             print("init_pos: ({}, {})".format(self.adv_obs[0][2], self.adv_obs[0][3]))
@@ -336,36 +344,42 @@ class MPERunner(Runner):
                     else:
                         raise NotImplementedError
 
-                    for thread_index in range(self.n_rollout_threads):
-                        adv_action = get_adv_action(self.num_agents, adv_strategy, self.adv_obs[thread_index], init_direction[thread_index])
-                        actions_env[thread_index][0] = adv_action
+                    actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
+                    for thread_index in range(self.all_args.n_rollout_threads):                    
+                        actions_env_adv = get_adv_action(self.all_args.num_agents, "stop",
+                                                                    self.adv_obs[thread_index], init_direction[thread_index])
+                        actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                         vel = np.sqrt(np.sum(np.square([obs[thread_index][0][0], obs[thread_index][0][1]]))) / 0.05 * 1000
                         vels.append(vel)
-                        for agent_index in range(1, self.num_agents):
+                        for agent_index in range(self.num_agents):
                             vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                             vels.append(vel)
                     # pdb.set_trace()
 
 
                 else:
-                    actions_env = np.zeros(shape=(self.n_rollout_threads, self.num_agents, 7))
+                    actions_env_all = np.zeros(shape=(self.n_rollout_threads, self.num_agents+1, 7))
                     for thread_index in range(self.n_rollout_threads):
                         adv_action = get_adv_action(self.num_agents, adv_strategy, self.adv_obs[thread_index],  init_direction[thread_index])
-                        actions_env[thread_index][0] = adv_action
+                        actions_env_all[thread_index][0] = adv_action
                         vel = np.sqrt(np.sum(np.square([obs[thread_index][0][0], obs[thread_index][0][1]]))) / 0.05 * 1000
                         vels.append(vel)
                         for agent_index in range(1, self.num_agents):
                             action = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
-                            actions_env[thread_index][agent_index] = action
+                            actions_env_all[thread_index][agent_index] = action
                             vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                             vels.append(vel)
 
                 # actions_env = np.zeros(shape=(self.n_rollout_threads, self.num_agents, 5))
 
                 # Obser reward and next obs
-                obs, rewards, dones, infos, avail_actions = envs.step(actions_env)
+                obs, rewards, dones, infos, avail_actions = envs.step(actions_env_all)
+                # print("step%d reward"%step, rewards[0][0], rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
                 self.adv_obs = obs[:, 0, :].copy()
-                obs[:, 0, :] = obs[:, 0, :] * 0
+                obs = obs[:, 1:, :]
+                rewards = rewards[:, 1:, :]
+                dones = dones[:, 1:]
+                avail_actions = avail_actions[:, 1:, :]
                 episode_rewards.append(rewards)
 
                 for i in range(1, self.num_agents):
@@ -390,7 +404,7 @@ class MPERunner(Runner):
                     img_pil = Image.fromarray(img, mode='RGB')
                     ttf = ImageFont.load_default()
                     img_draw = ImageDraw.Draw(img_pil)
-                    for i in range(self.num_agents):  
+                    for i in range(self.num_agents+1):  
                         if i == 0:
                             img_draw.text((20, 20+15*i), adversary_info.format(i, vels[i], infos[0][i]["detect_adversary"], mode), font=ttf, fill=(0, 0, 0))
                         else:                      

@@ -93,8 +93,7 @@ class MultiAgentEnv(gym.Env):
             
             # observation space
             obs_dim = len(observation_callback(agent, self.world))
-            if not agent.adversary:
-                share_obs_dim += obs_dim 
+            share_obs_dim += obs_dim 
             self.observation_space.append(spaces.Box(
                 low=-np.inf, high=+np.inf, shape=(obs_dim,), dtype=np.float32))  # [-inf,inf]
             agent.action.c = np.zeros(self.world.dim_c)
@@ -277,7 +276,7 @@ class MultiAgentEnv(gym.Env):
     
     def _set_available_action(self, agent, action_space):
         avail_action = np.ones((action_space.n))
-        if self.current_step < 100:
+        if self.current_step < 40:
             avail_action[5] = 0
         if agent.detected:
             avail_action[:5] = np.zeros((5))

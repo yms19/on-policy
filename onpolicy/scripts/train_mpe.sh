@@ -2,12 +2,12 @@
 env="MPE"
 scenario="simple_tag"  # simple_speaker_listener # simple_reference
 num_landmarks=0
-num_agents=5
+num_agents=4
 num_good_agents=4
 num_adversaries=1
 d_range=0.25
 algo="rmappo"
-exp="with_detect(0.5_1)"
+exp="with_detect(max_area)"
 seed_max=1
 
 echo "env is ${env}, scenario is ${scenario}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
