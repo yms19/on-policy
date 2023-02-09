@@ -104,7 +104,7 @@ class Scenario(BaseScenario):
         num_landmarks = args.num_landmarks#2
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
-        world.world_length = args.episode_length
+        world.world_length = args.episode_length+args.script_length
         init_angle = adversary_init_angle(270, 360)
         # init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)

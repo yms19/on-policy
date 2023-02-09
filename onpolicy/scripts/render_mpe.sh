@@ -14,11 +14,11 @@ seed_max=1
 echo "env is ${env}"
 for seed in `seq ${seed_max}`
 do
-    CUDA_VISIBLE_DEVICES=3 python render/render_mpe.py --use_ReLU \
+    CUDA_VISIBLE_DEVICES=3 python render/render_mpe.py --use_ReLU --save_gifs \
     --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp} --scenario_name ${scenario} \
     --num_good_agents ${num_good_agents} --num_adversaries ${num_adversaries} --num_bubbles ${num_bubbles} --d_range ${d_range} \
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 100 \
     --n_training_threads 1 --n_rollout_threads 1 --use_render \
-    --episode_length 100 --script_length 80 --render_episodes 100 --use_wandb \
+    --episode_length 90 --script_length 90 --render_episodes 1 --use_wandb \
     --model_dir "./results/MPE/simple_tag/rmappo/with_detect(mask)/wandb/run-20230208_175412-18tvdne2/files"
 done

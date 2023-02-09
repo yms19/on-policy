@@ -67,25 +67,25 @@ def get_good_action(num_agents, obs, agent_id, step):
     adv_y = 5
     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
-    target_pos = [[obs[18], obs[19]]] * 4
+    target_pos = [[obs[18]-0.1, obs[19]]] * 4
     action_env = np.zeros(shape=(1, 7))
     # print(obs)
     # print(target_pos)
     # exit()        
-    if step in range(80+agent_id*10, 120+agent_id*10):
-        action_env[0][5]=1
-    elif step == 120+agent_id*10:
-        action_env[0][6]=1
-    else:
-        if obs[adv_x] == 0 and obs[adv_y] == 0:
-            obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id-1][0] - obs[2]
-            obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id-1][1] - obs[3]
-        if abs(obs[adv_x]) > abs(obs[adv_y]):
-            i = 1 if obs[adv_x] > 0 else 2 
-            action_env[0][i]=1
-        else:
-            i = 3 if obs[adv_y] > 0 else 4 
+    # if step in range(80+agent_id*10, 120+agent_id*10):
+    #     action_env[0][5]=1
+    # elif step == 120+agent_id*10:
+    #     action_env[0][6]=1
+    # else:
+    if obs[adv_x] == 0 and obs[adv_y] == 0:
+        obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id-1][0] - obs[2]
+        obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id-1][1] - obs[3]
+    if abs(obs[adv_x]) > abs(obs[adv_y]):
+        i = 1 if obs[adv_x] > 0 else 2 
         action_env[0][i]=1
+    else:
+        i = 3 if obs[adv_y] > 0 else 4 
+    action_env[0][i]=1
     
     return action_env
 

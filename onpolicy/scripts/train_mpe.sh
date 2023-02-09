@@ -18,7 +18,7 @@ do
     --algorithm_name ${algo} --experiment_name ${exp} --scenario_name ${scenario} \
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} ----seed 1000 \
     --num_good_agents ${num_good_agents} --num_adversaries ${num_adversaries} --d_range ${d_range} \
-    --n_training_threads 1 --n_rollout_threads 256 --num_mini_batch 1 --episode_length 100 --script_length 80 \
+    --n_training_threads 1 --n_rollout_threads 256 --num_mini_batch 1 --episode_length 105 --script_length 75 \
     --num_env_steps 100000000 --ppo_epoch 10 --use_ReLU --gain 0.01 --lr 7e-4 --critic_lr 7e-4 \
     --user_name "yangxt19" --wandb_name "yangxt19" 
     # --model_dir "./results/MPE/simple_tag/rmappo/with_detect(mask)/wandb/run-20230207_121445-m6j5t2t9/files" 
