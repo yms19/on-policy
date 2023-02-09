@@ -108,8 +108,8 @@ class Scenario(BaseScenario):
         init_angle = adversary_init_angle(270, 360)
         # init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)
-        init_pos = [-1, 0.5]
-        init_radius = 0.5
+        init_pos_adv = [-1, 0.5]
+        init_dis = 1.5
         for i, agent in enumerate(world.agents):
             agent.name = 'agent %d' % i
             agent.collide = True
@@ -127,7 +127,7 @@ class Scenario(BaseScenario):
             agent.detected = True if agent.adversary else False if not agent.dummy else None
             agent.dtime = 0
             agent.dcount = 0
-            agent.init_pos = np.array([init_pos[0]+init_radius*math.cos(init_angle), init_pos[1]+init_radius*math.sin(init_angle)]) if agent.adversary else None
+            agent.init_pos = np.array([init_pos_adv[0]+init_dis*math.cos(init_angle), init_pos_adv[1]+init_dis*math.sin(init_angle)]) if agent.adversary else None
         # add landmarks
         world.landmarks = [Landmark() for i in range(num_landmarks)]
         for i, landmark in enumerate(world.landmarks):
@@ -148,9 +148,16 @@ class Scenario(BaseScenario):
         # random properties for landmarks
         # set random initial states
         init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
+        init_pos_adv = [-1, 0.5]
+        init_dis = 1.5
+        init_angle = adversary_init_angle(270, 360)
+
         init_radius = 1
-        init_center = world.agents[0].init_pos
+        init_center = world.agents[0].init_pos        
         for i, agent in enumerate(world.agents):
+            agent.dtime = 0
+            agent.dcount = 0
+            agent.init_pos = np.array([init_pos_adv[0]+init_dis*math.cos(init_angle), init_pos_adv[1]+init_dis*math.sin(init_angle)]) if agent.adversary else None
             
             if agent.adversary:
                 x = np.random.uniform(-1, +1) * init_radius + init_center[0]
@@ -169,6 +176,7 @@ class Scenario(BaseScenario):
                 agent.state.c = np.zeros(world.dim_c)
 
             else:
+                agent.detected = False
                 agent.state.p_pos = np.array(init_pos[i-1], dtype=float)
                 agent.state.p_vel = np.zeros(world.dim_p)
                 agent.state.c = np.zeros(world.dim_c)
@@ -276,17 +284,17 @@ class Scenario(BaseScenario):
         # x = np.sqrt(np.sum(np.square(agent.state.p_pos - init_pos)))
         # rew += guide(x)
 
-        def area():
-            area = 0
-            if in_range(left, right, up, down, agent.state.p_pos):
-                area = pow(2 * agent.d_range, 2) * 3
-                for other in good_agents:
-                    if other is agent:
-                        continue
-                    else:
-                        area -= get_cover_area(agent, other)
-            return area
-        rew += area()
+        # def area():
+        #     area = 0
+        #     if in_range(left, right, up, down, agent.state.p_pos):
+        #         area = pow(2 * agent.d_range, 2) * 3
+        #         for other in good_agents:
+        #             if other is agent:
+        #                 continue
+        #             else:
+        #                 area -= get_cover_area(agent, other)
+        #     return area
+        # rew += area()
 
         return rew
 

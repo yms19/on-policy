@@ -66,16 +66,20 @@ def get_good_action(num_agents, obs, agent_id, step):
     adv_x = 4
     adv_y = 5
     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
-    target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
-    action_env = np.zeros(shape=(1, num_agents+2))        
+    # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
+    target_pos = [[obs[18], obs[19]]] * 4
+    action_env = np.zeros(shape=(1, 7))
+    # print(obs)
+    # print(target_pos)
+    # exit()        
     if step in range(80+agent_id*10, 120+agent_id*10):
         action_env[0][5]=1
     elif step == 120+agent_id*10:
         action_env[0][6]=1
     else:
         if obs[adv_x] == 0 and obs[adv_y] == 0:
-            obs[adv_x] = target_pos[agent_id-1][0] + init_pos[agent_id-1][0] - obs[2]
-            obs[adv_y] = target_pos[agent_id-1][1] + init_pos[agent_id-1][1] - obs[3]
+            obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id-1][0] - obs[2]
+            obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id-1][1] - obs[3]
         if abs(obs[adv_x]) > abs(obs[adv_y]):
             i = 1 if obs[adv_x] > 0 else 2 
             action_env[0][i]=1
@@ -90,24 +94,37 @@ class MPERunner(Runner):
     def __init__(self, config):
         super(MPERunner, self).__init__(config)
         self.adv_obs = np.zeros((self.all_args.n_rollout_threads, 1, *self.envs.observation_space[0].shape))
+        self.script_length = self.all_args.script_length
 
     def run(self):
-        self.warmup()   
+        self.warmup()
+        obs = self.buffer.obs[0] 
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
+        win_count = 0
+        fail_count = 0
 
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
+            win = np.zeros((self.n_rollout_threads))
+            win_step = np.zeros((self.n_rollout_threads))
             if self.use_linear_lr_decay:
-                self.trainer.policy.lr_decay(episode, episodes)
-
-            for step in range(self.episode_length):
+                self.trainer.policy.lr_decay(episode, episodes)            
+                
+            for step in range(self.episode_length+self.script_length):
                 # Sample actions
-                values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step)
+                if step < self.script_length:
+                    actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
+                    for thread_index in range(self.all_args.n_rollout_threads):
+                        for agent_index in range(self.num_agents):
+                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
+                else:
+                    values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length)
+
                 actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                 for thread_index in range(self.all_args.n_rollout_threads):                    
-                    actions_env_adv = get_adv_action(self.all_args.num_agents, "stop",
+                    actions_env_adv = get_adv_action(self.all_args.num_agents, "escape_nearest",
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
                     actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                 # pdb.set_trace()
@@ -115,15 +132,32 @@ class MPERunner(Runner):
                 # Obser reward and next obs
                 obs, rewards, dones, infos, available_actions = self.envs.step(actions_env_all)
 
-                # print("step%d"%step)
-                # print(obs[0][1],obs[0][2],obs[0][3],obs[0][3])
+                for thread_index in range(self.all_args.n_rollout_threads):
+                    for agent_index in range(self.num_agents):
+                        if infos[thread_index][agent_index+1]['detect_adversary']:
+                            win[thread_index] = 1
+                            if win_step[thread_index]==0:
+                                win_step[thread_index] = step+1
+                # print("step%d action"%step, actions[0][0], actions[0][1], actions[0][2], actions[0][3])
+                # print("step%d avail"%step,  available_actions[0][1], available_actions[0][2], available_actions[0][3], available_actions[0][4])
 
-                data = obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic
+                # for i in range(self.num_agents):
+                #     print("eval average episode rewards of agent%i: " % i + str(rewards[:, :,]))
 
-                # insert data into buffer
-                self.insert(data)
+                # print("step%d obs"%step, obs[0][1],obs[0][2],obs[0][3],obs[0][3])
+                if step >= self.script_length:
+                    data = obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic
+
+                    # insert data into buffer
+                    self.insert(data)
+
+            # for i in range(self.num_agents):
+            #     average_episode_rewards = np.sum(self.buffer.rewards[:, :, i])
+            #     print("eval average episode rewards of agent%i: " % i + str(average_episode_rewards))
 
             # compute return and update network
+            win_count += np.sum(win)
+            fail_count += self.all_args.n_rollout_threads - np.sum(win)
             self.compute()
             train_infos = self.train()
             
@@ -153,15 +187,20 @@ class MPERunner(Runner):
                     for agent_id in range(self.num_agents):
                         idv_rews = []
                         for info in infos:
-                            if 'individual_reward' in info[agent_id].keys():
-                                idv_rews.append(info[agent_id]['individual_reward'])
-                        agent_k = 'agent%i/individual_rewards' % agent_id
+                            if 'individual_reward' in info[agent_id+1].keys():
+                                idv_rews.append(info[agent_id+1]['individual_reward'])
+                        agent_k = 'agent%i/individual_rewards' % (agent_id+1)
                         env_infos[agent_k] = idv_rews
 
                 train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
+                train_infos["win_rate"] = win_count / (win_count + fail_count)
+                train_infos["average_detect_step"] = np.sum(win_step)/win_count
                 print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
+                print("win rate is {:.2f}%".format(train_infos["win_rate"]*100))
                 self.log_train(train_infos, total_num_steps)
                 self.log_env(env_infos, total_num_steps)
+                win_count = 0
+                fail_count = 0
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
@@ -194,7 +233,8 @@ class MPERunner(Runner):
                             np.concatenate(self.buffer.rnn_states[step]),
                             np.concatenate(self.buffer.rnn_states_critic[step]),
                             np.concatenate(self.buffer.masks[step]),
-                            np.concatenate(self.buffer.available_actions[step]))
+                            np.concatenate(self.buffer.available_actions[step])
+                            )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
         actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
@@ -288,6 +328,7 @@ class MPERunner(Runner):
         all_frames = []
         win_count = 0
         fail_count = 0
+        accumulate_reward = np.zeros((self.all_args.num_good_agents))
         for episode in range(self.all_args.render_episodes):
             obs, avail_actions = envs.reset()
             self.adv_obs = obs[:, 0, :].copy()
@@ -316,40 +357,46 @@ class MPERunner(Runner):
             
             episode_rewards = []
             
-            for step in range(self.episode_length):
+            for step in range(self.episode_length+self.script_length):
                 calc_start = time.time()
-                adv_strategy = 'stop'
+                adv_strategy = 'escape_nearest'
                 mode = "scripts"
                 vels = []
 
                 if self.all_args.model_dir is not None:
-                    self.trainer.prep_rollout()
-                    action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
-                                                        np.concatenate(rnn_states),
-                                                        np.concatenate(masks),
-                                                        np.concatenate(avail_actions),
-                                                        deterministic=True)
-                    actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
-                    # print("step%d action"%step, actions[0][1], actions[0][2], actions[0][3], actions[0][4])
-                    rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
-                    if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
-                        for i in range(envs.action_space[0].shape):
-                            uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
-                            if i == 0:
-                                actions_env = uc_actions_env
-                            else:
-                                actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
-                    elif envs.action_space[0].__class__.__name__ == 'Discrete':
-                        actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
+                    if step < self.script_length:
+                        actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
+                        for thread_index in range(self.all_args.n_rollout_threads):
+                            for agent_index in range(self.num_agents):
+                                actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
                     else:
-                        raise NotImplementedError
+                        self.trainer.prep_rollout()
+                        action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
+                                                            np.concatenate(rnn_states),
+                                                            np.concatenate(masks),
+                                                            np.concatenate(avail_actions),
+                                                            deterministic=True)
+                        actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
+                        # print("step%d action"%step, actions[0][0], actions[0][1], actions[0][2], actions[0][3])
+                        rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+                        if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
+                            for i in range(envs.action_space[0].shape):
+                                uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
+                                if i == 0:
+                                    actions_env = uc_actions_env
+                                else:
+                                    actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+                        elif envs.action_space[0].__class__.__name__ == 'Discrete':
+                            actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
+                        else:
+                            raise NotImplementedError
 
                     actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                     for thread_index in range(self.all_args.n_rollout_threads):                    
-                        actions_env_adv = get_adv_action(self.all_args.num_agents, "stop",
+                        actions_env_adv = get_adv_action(self.all_args.num_agents, adv_strategy,
                                                                     self.adv_obs[thread_index], init_direction[thread_index])
                         actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
-                        vel = np.sqrt(np.sum(np.square([obs[thread_index][0][0], obs[thread_index][0][1]]))) / 0.05 * 1000
+                        vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
                         vels.append(vel)
                         for agent_index in range(self.num_agents):
                             vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
@@ -362,11 +409,11 @@ class MPERunner(Runner):
                     for thread_index in range(self.n_rollout_threads):
                         adv_action = get_adv_action(self.num_agents, adv_strategy, self.adv_obs[thread_index],  init_direction[thread_index])
                         actions_env_all[thread_index][0] = adv_action
-                        vel = np.sqrt(np.sum(np.square([obs[thread_index][0][0], obs[thread_index][0][1]]))) / 0.05 * 1000
+                        vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
                         vels.append(vel)
-                        for agent_index in range(1, self.num_agents):
+                        for agent_index in range(self.num_agents):
                             action = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
-                            actions_env_all[thread_index][agent_index] = action
+                            actions_env_all[thread_index][agent_index+1] = action
                             vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                             vels.append(vel)
 
@@ -375,6 +422,9 @@ class MPERunner(Runner):
                 # Obser reward and next obs
                 obs, rewards, dones, infos, avail_actions = envs.step(actions_env_all)
                 # print("step%d reward"%step, rewards[0][0], rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
+                # print("step%d avail"%step,  avail_actions[0][1], avail_actions[0][2], avail_actions[0][3], avail_actions[0][4])
+                # print("step%d"%step)
+                # print(obs[0][1],obs[0][2],obs[0][3],obs[0][3])
                 self.adv_obs = obs[:, 0, :].copy()
                 obs = obs[:, 1:, :]
                 rewards = rewards[:, 1:, :]
@@ -407,7 +457,8 @@ class MPERunner(Runner):
                     for i in range(self.num_agents+1):  
                         if i == 0:
                             img_draw.text((20, 20+15*i), adversary_info.format(i, vels[i], infos[0][i]["detect_adversary"], mode), font=ttf, fill=(0, 0, 0))
-                        else:                      
+                        else:
+                            # print(i, vels, infos)                      
                             img_draw.text((20, 20+15*i), agent_info.format(i, vels[i], infos[0][i]["detect_times"], infos[0][i]["detect_adversary"]), font=ttf, fill=(0, 0, 0))
                     img_draw.text((20, 95), environment_info.format(int(step*4.5/60), step*4.5%60, win_count, fail_count),
                             font=ttf, fill=(0, 0, 0))
@@ -433,10 +484,13 @@ class MPERunner(Runner):
             for agent_id in range(self.num_agents):
                 average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
                 print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
+                accumulate_reward[agent_id] += average_episode_rewards
 
         if self.all_args.save_gifs:
             print(self.gif_dir)
             imageio.mimsave(str(self.gif_dir) + '/render.gif', all_frames, duration=self.all_args.ifi)
         
         print("win: {}\nfail: {}\nwin rate: {} %".format(win_count, fail_count, 100*win_count/(win_count+fail_count)))
+        for agent_id in range(self.num_agents):
+            print("accumulative average episode rewards of agent%i: " % agent_id + str(accumulate_reward[agent_id]/self.all_args.render_episodes))
         

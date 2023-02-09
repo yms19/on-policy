@@ -168,8 +168,7 @@ class MultiAgentEnv(gym.Env):
 
         for agent in self.agents:
             obs_n.append(self._get_obs(agent))
-            avail = np.ones(self.action_space[0].n)
-            avail[-1] = 0
+            avail = self._set_available_action(agent, self.action_space[0])
             avail_n.append(avail)
             
         return obs_n, avail_n
@@ -276,7 +275,7 @@ class MultiAgentEnv(gym.Env):
     
     def _set_available_action(self, agent, action_space):
         avail_action = np.ones((action_space.n))
-        if self.current_step < 40:
+        if self.current_step < 0:
             avail_action[5] = 0
         if agent.detected:
             avail_action[:5] = np.zeros((5))
