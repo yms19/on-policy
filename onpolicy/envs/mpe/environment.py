@@ -118,6 +118,7 @@ class MultiAgentEnv(gym.Env):
     # step  this is  env.step()
     def step(self, action_n):
         self.current_step += 1
+        # print("environment step is {}".format(self.current_step))
         obs_n = []
         reward_n = []
         done_n = []
@@ -144,6 +145,11 @@ class MultiAgentEnv(gym.Env):
             if 'detect_times' in env_info.keys():
                 info['detect_times'] = env_info['detect_times']
             info_n.append(info)
+            if self.current_step in range (120, 150) and not agent.dummy:
+                if agent.adversary:
+                    print("")
+                print(agent.state.p_pos)
+                
 
         # all agents get total reward in cooperative case, if shared reward, all agents have the same reward, and reward is sum
         reward = np.sum(reward_n)

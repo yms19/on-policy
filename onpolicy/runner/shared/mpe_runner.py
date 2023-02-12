@@ -78,15 +78,18 @@ def get_good_action(num_agents, obs, agent_id, step, avail_action):
     # elif step == 120+agent_id*10:
     #     action_env[0][6]=1
     # else:
+    detect_threshold = 0.02
     if obs[adv_x] == 0 and obs[adv_y] == 0:
-        obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id-1][0] - obs[2]
-        obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id-1][1] - obs[3]
-    if abs(obs[adv_x]) > abs(obs[adv_y]):
+        obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id][0] - obs[2]
+        obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id][1] - obs[3]
+    if np.sqrt(np.sum(np.square([obs[adv_x], obs[adv_y]]))) < detect_threshold:
+        action_env[0][0]=1
+    elif abs(obs[adv_x]) > abs(obs[adv_y]):
         i = 1 if obs[adv_x] > 0 else 2 
         action_env[0][i]=1
     else:
         i = 3 if obs[adv_y] > 0 else 4 
-    action_env[0][i]=1
+        action_env[0][i]=1
     
     return action_env
 
@@ -157,9 +160,13 @@ class MPERunner(Runner):
                     actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
                     for thread_index in range(self.all_args.n_rollout_threads):
                         for agent_index in range(self.num_agents):
-                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, available_actions[thread_index][agent_index])
+                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step, available_actions[thread_index][agent_index-self.num_agents])
+                            print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
+                    print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
                     values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length)
+                    # if episode == 49:
+                    #     pdb.set_trace()
 
                 actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                 for thread_index in range(self.all_args.n_rollout_threads):                    
@@ -189,6 +196,7 @@ class MPERunner(Runner):
 
                     # insert data into buffer
                     self.insert(data)
+                # print("finish episode {} step {}".format(episode,step))                
 
             # for i in range(self.num_agents):
             #     average_episode_rewards = np.sum(self.buffer.rewards[:, :, i])
@@ -197,9 +205,10 @@ class MPERunner(Runner):
             # compute return and update network
             win_count += np.sum(win)
             fail_count += self.all_args.n_rollout_threads - np.sum(win)
-            print("average episode rewards is {}".format(np.mean(self.buffer.rewards) * self.episode_length))
-            self.compute()
-            train_infos = self.train()
+            print("episode{} average episode rewards is {}".format(episode, np.mean(self.buffer.rewards) * self.episode_length))
+            # self.compute()
+            # train_infos = self.train()
+            train_infos = {}
             
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
@@ -242,7 +251,7 @@ class MPERunner(Runner):
                 self.log_env(env_infos, total_num_steps)
                 win_count = 0
                 fail_count = 0
-            if episode == 50:
+            if episode == 0:
                 exit()
 
             # eval
@@ -413,6 +422,8 @@ class MPERunner(Runner):
                         for thread_index in range(self.all_args.n_rollout_threads):
                             for agent_index in range(self.num_agents):
                                 actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
+                                print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
+                        print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                     else:
                         self.trainer.prep_rollout()
                         action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
@@ -420,8 +431,7 @@ class MPERunner(Runner):
                                                             np.concatenate(masks),
                                                             np.concatenate(avail_actions),
                                                             deterministic=True)
-                        actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
-                        # print("step%d action"%step, actions[0][0], actions[0][1], actions[0][2], actions[0][3])
+                        actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
                         rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
                         if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
                             for i in range(envs.action_space[0].shape):
