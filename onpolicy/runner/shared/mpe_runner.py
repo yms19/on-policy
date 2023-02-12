@@ -62,12 +62,13 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
 
     return action_env
 
-def get_good_action(num_agents, obs, agent_id, step):
+# old version
+def get_good_action(num_agents, obs, agent_id, step, avail_action):
     adv_x = 4
     adv_y = 5
     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
-    target_pos = [[obs[18]-0.1, obs[19]]] * 4
+    target_pos = [[obs[18], obs[19]]] * 4
     action_env = np.zeros(shape=(1, 7))
     # print(obs)
     # print(target_pos)
@@ -89,6 +90,43 @@ def get_good_action(num_agents, obs, agent_id, step):
     
     return action_env
 
+# new version
+# def get_good_action(num_agents, obs, agent_id, step, avail_action):
+#     adv_x = 4
+#     adv_y = 5
+#     detect_threshold = 0.01
+#     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
+#     adv_center = [obs[18], obs[19]]
+#     target_pos = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3]]
+#     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
+#     # target_pos = [[obs[18], obs[19]]] * 4
+#     action_env = np.zeros(shape=(1, 7))
+#     # print(obs)
+#     # print(target_pos)
+#     # exit()        
+#     # if step in range(80+agent_id*10, 120+agent_id*10):
+#     #     action_env[0][5]=1
+#     # elif step == 120+agent_id*10:
+#     #     action_env[0][6]=1
+#     # else:
+#     if obs[adv_x] == 0 and obs[adv_y] == 0:
+#         obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id][0] - obs[2]
+#         obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id][1] - obs[3]
+
+#     if np.sqrt(np.sum(np.square([obs[adv_x], obs[adv_y]]))) < detect_threshold and avail_action[5]:
+#         action_env[0][5]=1
+
+#     elif abs(obs[adv_x]) > abs(obs[adv_y]) and avail_action[1]:
+#         i = 1 if obs[adv_x] > 0 else 2 
+#         action_env[0][i]=1
+#     elif avail_action[3]:
+#         i = 3 if obs[adv_y] > 0 else 4
+#         action_env[0][i]=1 
+#     else:
+#         action_env[0][6]=1
+    
+#     return action_env
+
 class MPERunner(Runner):
     """Runner class to perform training, evaluation. and data collection for the MPEs. See parent class for details."""
     def __init__(self, config):
@@ -98,7 +136,8 @@ class MPERunner(Runner):
 
     def run(self):
         self.warmup()
-        obs = self.buffer.obs[0] 
+        obs = self.buffer.obs[0]
+        available_actions = self.buffer.available_actions[0] 
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
@@ -118,13 +157,13 @@ class MPERunner(Runner):
                     actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
                     for thread_index in range(self.all_args.n_rollout_threads):
                         for agent_index in range(self.num_agents):
-                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
+                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, available_actions[thread_index][agent_index])
                 else:
                     values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length)
 
                 actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                 for thread_index in range(self.all_args.n_rollout_threads):                    
-                    actions_env_adv = get_adv_action(self.all_args.num_agents, "escape_nearest",
+                    actions_env_adv = get_adv_action(self.all_args.num_agents, "stop",
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
                     actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                 # pdb.set_trace()
@@ -158,6 +197,7 @@ class MPERunner(Runner):
             # compute return and update network
             win_count += np.sum(win)
             fail_count += self.all_args.n_rollout_threads - np.sum(win)
+            print("average episode rewards is {}".format(np.mean(self.buffer.rewards) * self.episode_length))
             self.compute()
             train_infos = self.train()
             
@@ -165,12 +205,13 @@ class MPERunner(Runner):
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
             
             # save model
-            if (episode % self.save_interval == 0 or episode == episodes - 1):
-                # print("\nModel save to {}".format(self.save_dir))
-                self.save()
+            # if (episode % self.save_interval == 0 or episode == episodes - 1):
+            #     # print("\nModel save to {}".format(self.save_dir))
+            #     self.save()
 
             # log information
-            if episode % self.log_interval == 0:
+            # if episode % self.log_interval == 0:
+            if episode % 50 == 0:
                 end = time.time()
                 print("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
                         .format(self.all_args.scenario_name,
@@ -201,6 +242,8 @@ class MPERunner(Runner):
                 self.log_env(env_infos, total_num_steps)
                 win_count = 0
                 fail_count = 0
+            if episode == 50:
+                exit()
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
@@ -233,7 +276,8 @@ class MPERunner(Runner):
                             np.concatenate(self.buffer.rnn_states[step]),
                             np.concatenate(self.buffer.rnn_states_critic[step]),
                             np.concatenate(self.buffer.masks[step]),
-                            np.concatenate(self.buffer.available_actions[step])
+                            np.concatenate(self.buffer.available_actions[step]),
+                            deterministic=True
                             )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
@@ -324,7 +368,7 @@ class MPERunner(Runner):
     @torch.no_grad()
     def render(self, display):
         """Visualize the env."""
-        envs = self.envs       
+        envs = self.envs    
         all_frames = []
         win_count = 0
         fail_count = 0
@@ -359,7 +403,7 @@ class MPERunner(Runner):
             
             for step in range(self.episode_length+self.script_length):
                 calc_start = time.time()
-                adv_strategy = 'escape_nearest'
+                adv_strategy = 'stop'
                 mode = "scripts"
                 vels = []
 
@@ -368,7 +412,7 @@ class MPERunner(Runner):
                         actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
                         for thread_index in range(self.all_args.n_rollout_threads):
                             for agent_index in range(self.num_agents):
-                                actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
+                                actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
                     else:
                         self.trainer.prep_rollout()
                         action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
@@ -412,7 +456,7 @@ class MPERunner(Runner):
                         vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
                         vels.append(vel)
                         for agent_index in range(self.num_agents):
-                            action = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step)
+                            action = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
                             actions_env_all[thread_index][agent_index+1] = action
                             vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                             vels.append(vel)
@@ -432,7 +476,7 @@ class MPERunner(Runner):
                 avail_actions = avail_actions[:, 1:, :]
                 episode_rewards.append(rewards)
 
-                for i in range(1, self.num_agents):
+                for i in range(1, self.num_agents+1):
                     if infos[0][i]["detect_adversary"]:
                         win = True
                 
@@ -480,7 +524,7 @@ class MPERunner(Runner):
                 fail_count += 1
 
             episode_rewards = np.array(episode_rewards)
-            print("\nresult of episode %i:" % episode)
+            print("result of episode %i:" % episode)
             for agent_id in range(self.num_agents):
                 average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
                 print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
