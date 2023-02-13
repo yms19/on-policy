@@ -157,18 +157,18 @@ class Scenario(BaseScenario):
         for i, agent in enumerate(world.agents):
             agent.dtime = 0
             agent.dcount = 0
-            # agent.init_pos = np.array([init_pos_adv[0]+init_dis*math.cos(init_angle), init_pos_adv[1]+init_dis*math.sin(init_angle)]) if agent.adversary else None                       
+            agent.init_pos = np.array([init_pos_adv[0]+init_dis*math.cos(init_angle), init_pos_adv[1]+init_dis*math.sin(init_angle)]) if agent.adversary else None                       
             if agent.adversary:
-                agent.init_pos = np.array([0.49634608, 0.39536529])
-                print("agent.init_pos is: ", agent.init_pos) 
-                x, y = (0.7787006942504207,0.4637946027397719)
-                # init_center = agent.init_pos 
-                # x = np.random.uniform(-1, +1) * init_radius + init_center[0]
-                # y = np.random.uniform(-1, +1) * init_radius + init_center[1]
-                # while not adversary_possible_range(init_center, np.array([x, y]), 840):
-                #     x = np.random.uniform(-1, +1) * init_radius + init_center[0]
-                #     y = np.random.uniform(-1, +1) * init_radius + init_center[1]
-                print("\ninit_pos is:({},{})".format(x, y))
+                # agent.init_pos = np.array([0.49634608, 0.39536529])
+                # # print("agent.init_pos is: ", agent.init_pos) 
+                # x, y = (0.7787006942504207,0.4637946027397719)
+                init_center = agent.init_pos 
+                x = np.random.uniform(-1, +1) * init_radius + init_center[0]
+                y = np.random.uniform(-1, +1) * init_radius + init_center[1]
+                while not adversary_possible_range(init_center, np.array([x, y]), 840):
+                    x = np.random.uniform(-1, +1) * init_radius + init_center[0]
+                    y = np.random.uniform(-1, +1) * init_radius + init_center[1]
+                # print("\ninit_pos is:({},{})".format(x, y))
                 agent.state.p_pos = np.array([x, y], dtype=float)
                 agent.state.p_vel = np.zeros(world.dim_p)
                 agent.state.c = np.zeros(world.dim_c)

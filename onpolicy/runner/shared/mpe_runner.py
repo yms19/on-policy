@@ -161,12 +161,10 @@ class MPERunner(Runner):
                     for thread_index in range(self.all_args.n_rollout_threads):
                         for agent_index in range(self.num_agents):
                             actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step, available_actions[thread_index][agent_index-self.num_agents])
-                            print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
-                    print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
+                            # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
+                    # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
                     values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length)
-                    # if episode == 49:
-                    #     pdb.set_trace()
 
                 actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                 for thread_index in range(self.all_args.n_rollout_threads):                    
@@ -205,22 +203,21 @@ class MPERunner(Runner):
             # compute return and update network
             win_count += np.sum(win)
             fail_count += self.all_args.n_rollout_threads - np.sum(win)
-            print("episode{} average episode rewards is {}".format(episode, np.mean(self.buffer.rewards) * self.episode_length))
-            # self.compute()
-            # train_infos = self.train()
-            train_infos = {}
+            # print("episode{} average episode rewards is {}".format(episode, np.mean(self.buffer.rewards) * self.episode_length))
+            self.compute()
+            train_infos = self.train()
+            # train_infos = {}
             
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
             
             # save model
-            # if (episode % self.save_interval == 0 or episode == episodes - 1):
-            #     # print("\nModel save to {}".format(self.save_dir))
-            #     self.save()
+            if (episode % self.save_interval == 0 or episode == episodes - 1):
+                # print("\nModel save to {}".format(self.save_dir))
+                self.save()
 
             # log information
-            # if episode % self.log_interval == 0:
-            if episode % 50 == 0:
+            if episode % self.log_interval == 0:
                 end = time.time()
                 print("\n Scenario {} Algo {} Exp {} updates {}/{} episodes, total num timesteps {}/{}, FPS {}.\n"
                         .format(self.all_args.scenario_name,
@@ -251,8 +248,6 @@ class MPERunner(Runner):
                 self.log_env(env_infos, total_num_steps)
                 win_count = 0
                 fail_count = 0
-            if episode == 0:
-                exit()
 
             # eval
             if episode % self.eval_interval == 0 and self.use_eval:
@@ -422,8 +417,8 @@ class MPERunner(Runner):
                         for thread_index in range(self.all_args.n_rollout_threads):
                             for agent_index in range(self.num_agents):
                                 actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
-                                print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
-                        print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
+                                # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
+                        # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                     else:
                         self.trainer.prep_rollout()
                         action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
