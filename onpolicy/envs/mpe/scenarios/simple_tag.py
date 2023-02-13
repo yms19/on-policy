@@ -105,8 +105,8 @@ class Scenario(BaseScenario):
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
         world.world_length = args.episode_length+args.script_length
-        init_angle = adversary_init_angle(270, 360)
-        # init_angle = 0
+        # init_angle = adversary_init_angle(270, 360)
+        init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)
         init_pos_adv = [-1, 0.5]
         init_dis = 1.5
@@ -150,7 +150,8 @@ class Scenario(BaseScenario):
         init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
         init_pos_adv = [-1, 0.5]
         init_dis = 1.5
-        init_angle = adversary_init_angle(270, 360)
+        # init_angle = adversary_init_angle(270, 360)
+        init_angle = 0
 
         init_radius = 1
                

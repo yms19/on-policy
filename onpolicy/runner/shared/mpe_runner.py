@@ -70,14 +70,6 @@ def get_good_action(num_agents, obs, agent_id, step, avail_action):
     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
     target_pos = [[obs[18], obs[19]]] * 4
     action_env = np.zeros(shape=(1, 7))
-    # print(obs)
-    # print(target_pos)
-    # exit()        
-    # if step in range(80+agent_id*10, 120+agent_id*10):
-    #     action_env[0][5]=1
-    # elif step == 120+agent_id*10:
-    #     action_env[0][6]=1
-    # else:
     detect_threshold = 0.02
     if obs[adv_x] == 0 and obs[adv_y] == 0:
         obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id][0] - obs[2]
@@ -94,41 +86,83 @@ def get_good_action(num_agents, obs, agent_id, step, avail_action):
     return action_env
 
 # new version
-# def get_good_action(num_agents, obs, agent_id, step, avail_action):
-#     adv_x = 4
-#     adv_y = 5
-#     detect_threshold = 0.01
-#     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
-#     adv_center = [obs[18], obs[19]]
-#     target_pos = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3]]
-#     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
-#     # target_pos = [[obs[18], obs[19]]] * 4
-#     action_env = np.zeros(shape=(1, 7))
-#     # print(obs)
-#     # print(target_pos)
-#     # exit()        
-#     # if step in range(80+agent_id*10, 120+agent_id*10):
-#     #     action_env[0][5]=1
-#     # elif step == 120+agent_id*10:
-#     #     action_env[0][6]=1
-#     # else:
-#     if obs[adv_x] == 0 and obs[adv_y] == 0:
-#         obs[adv_x] = target_pos[agent_id][0] + init_pos[agent_id][0] - obs[2]
-#         obs[adv_y] = target_pos[agent_id][1] + init_pos[agent_id][1] - obs[3]
+def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
+    adv_x = 4
+    adv_y = 5
+    detect_threshold = 0.01
+    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
+    adv_center = [obs[18], obs[19]]
+    target_pos1 = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3]]
+    target_pos2 = [[adv_center[0]-0.2, adv_center[1]], [adv_center[0]+0.17, adv_center[1]+0.57], [adv_center[0]+0.7, adv_center[1]-0.1], [adv_center[0]+0.7, adv_center[1]+0.3]]
+    # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
+    # target_pos = [[obs[18], obs[19]]] * 4
+    action_env = np.zeros(shape=(1, 7))
+    # print(obs)
+    # print(target_pos)
+    # exit()        
+    # if step in range(80+agent_id*10, 120+agent_id*10):
+    #     action_env[0][5]=1
+    # elif step == 120+agent_id*10:
+    #     action_env[0][6]=1
+    # else:
+    if obs[adv_x] == 0 and obs[adv_y] == 0 :
+        if step < 173:
+            obs[adv_x] = target_pos1[agent_id][0] + init_pos[agent_id][0] - obs[2]
+            obs[adv_y] = target_pos1[agent_id][1] + init_pos[agent_id][1] - obs[3]
+        else:
+            obs[adv_x] = target_pos2[agent_id][0] + init_pos[agent_id][0] - obs[2]
+            obs[adv_y] = target_pos2[agent_id][1] + init_pos[agent_id][1] - obs[3]
 
-#     if np.sqrt(np.sum(np.square([obs[adv_x], obs[adv_y]]))) < detect_threshold and avail_action[5]:
-#         action_env[0][5]=1
-
-#     elif abs(obs[adv_x]) > abs(obs[adv_y]) and avail_action[1]:
-#         i = 1 if obs[adv_x] > 0 else 2 
-#         action_env[0][i]=1
-#     elif avail_action[3]:
-#         i = 3 if obs[adv_y] > 0 else 4
-#         action_env[0][i]=1 
-#     else:
-#         action_env[0][6]=1
+    # if np.sqrt(np.sum(np.square([obs[adv_x], obs[adv_y]]))) < detect_threshold and not first_achieve:
+    if agent_id == 0 and step in range(88, 129):
+        if step in range(88, 128):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1
+    elif agent_id == 0 and step in range(185, 226):
+        if step in range(185, 225):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1
+    elif agent_id == 1 and step in range(106, 148):
+        if step in range(106, 147):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1            
+    elif agent_id == 1 and step in range(197, 238):
+        if step in range(197, 237):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1  
+    elif agent_id == 2 and step in range(121, 162):
+        if step in range(121, 161):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1
+    elif agent_id == 2 and step in range(188, 229):
+        if step in range(188, 228):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1
+    elif agent_id == 3 and step in range(131, 172):
+        if step in range(131, 171):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1
+    elif agent_id == 3 and step in range(188, 229):
+        if step in range(188, 228):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1
+    else:
+        if abs(obs[adv_x]) > abs(obs[adv_y]) and avail_action[1]:
+            i = 1 if obs[adv_x] > 0 else 2 
+            action_env[0][i]=1
+        elif avail_action[3]:
+            i = 3 if obs[adv_y] > 0 else 4
+            action_env[0][i]=1 
     
-#     return action_env
+    return action_env
 
 class MPERunner(Runner):
     """Runner class to perform training, evaluation. and data collection for the MPEs. See parent class for details."""
@@ -161,20 +195,35 @@ class MPERunner(Runner):
                     for thread_index in range(self.all_args.n_rollout_threads):
                         for agent_index in range(self.num_agents):
                             actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step, available_actions[thread_index][agent_index-self.num_agents])
-                            # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
+                            # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
                     # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
                     values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length)
 
                 actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
+
                 for thread_index in range(self.all_args.n_rollout_threads):                    
-                    actions_env_adv = get_adv_action(self.all_args.num_agents, "stop",
+                    actions_env_adv = get_adv_action(self.all_args.num_agents, "escape_nearest",
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
                     actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                 # pdb.set_trace()
                     
                 # Obser reward and next obs
                 obs, rewards, dones, infos, available_actions = self.envs.step(actions_env_all)
+                self.adv_obs = obs[:, 0, :].copy()
+
+                if step == self.script_length - 1:
+                    if self.use_centralized_V:
+                        share_obs = obs.reshape(self.n_rollout_threads, -1)
+                        share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+                    else:
+                        share_obs = obs
+
+                    obs = obs[:, 1:, :]
+                    available_actions = available_actions[:, 1:, :]
+                    self.buffer.share_obs[0] = share_obs.copy()
+                    self.buffer.obs[0] = obs.copy()
+                    self.buffer.available_actions[0] = available_actions.copy()
 
                 for thread_index in range(self.all_args.n_rollout_threads):
                     for agent_index in range(self.num_agents):
@@ -305,8 +354,7 @@ class MPERunner(Runner):
         return values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env
 
     def insert(self, data):
-        obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic = data
-        self.adv_obs = obs[:, 0, :].copy()
+        obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic = data        
         dones = dones[:, 1:]
         rewards = rewards[:, 1:, :]
         
@@ -376,6 +424,7 @@ class MPERunner(Runner):
         all_frames = []
         win_count = 0
         fail_count = 0
+        step_count = 0
         accumulate_reward = np.zeros((self.all_args.num_good_agents))
         for episode in range(self.all_args.render_episodes):
             obs, avail_actions = envs.reset()
@@ -385,6 +434,7 @@ class MPERunner(Runner):
             
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
             win = False
+            win_step = np.zeros((self.n_rollout_threads))
             print("init_pos: ({}, {})".format(self.adv_obs[0][2], self.adv_obs[0][3]))
             infos = [[{'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
                     {'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
@@ -407,7 +457,7 @@ class MPERunner(Runner):
             
             for step in range(self.episode_length+self.script_length):
                 calc_start = time.time()
-                adv_strategy = 'stop'
+                adv_strategy = 'escape_nearest'
                 mode = "scripts"
                 vels = []
 
@@ -461,7 +511,7 @@ class MPERunner(Runner):
                         vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
                         vels.append(vel)
                         for agent_index in range(self.num_agents):
-                            action = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
+                            action = get_good_action_with_detect(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
                             actions_env_all[thread_index][agent_index+1] = action
                             vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                             vels.append(vel)
@@ -474,6 +524,12 @@ class MPERunner(Runner):
                 # print("step%d avail"%step,  avail_actions[0][1], avail_actions[0][2], avail_actions[0][3], avail_actions[0][4])
                 # print("step%d"%step)
                 # print(obs[0][1],obs[0][2],obs[0][3],obs[0][3])
+
+                for thread_index in range(self.all_args.n_rollout_threads):
+                    for agent_index in range(self.num_agents):
+                        if infos[thread_index][agent_index+1]['detect_adversary'] and win_step[thread_index]==0:
+                                win_step[thread_index] = step+1
+
                 self.adv_obs = obs[:, 0, :].copy()
                 obs = obs[:, 1:, :]
                 rewards = rewards[:, 1:, :]
@@ -528,6 +584,8 @@ class MPERunner(Runner):
             else:
                 fail_count += 1
 
+            step_count += np.sum(win_step)
+
             episode_rewards = np.array(episode_rewards)
             print("result of episode %i:" % episode)
             for agent_id in range(self.num_agents):
@@ -540,6 +598,7 @@ class MPERunner(Runner):
             imageio.mimsave(str(self.gif_dir) + '/render.gif', all_frames, duration=self.all_args.ifi)
         
         print("win: {}\nfail: {}\nwin rate: {} %".format(win_count, fail_count, 100*win_count/(win_count+fail_count)))
+        print("The average number of probe steps consumed is {}".format(step_count/win_count))
         for agent_id in range(self.num_agents):
             print("accumulative average episode rewards of agent%i: " % agent_id + str(accumulate_reward[agent_id]/self.all_args.render_episodes))
         
