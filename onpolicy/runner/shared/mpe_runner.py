@@ -330,7 +330,6 @@ class MPERunner(Runner):
                             np.concatenate(self.buffer.rnn_states_critic[step]),
                             np.concatenate(self.buffer.masks[step]),
                             np.concatenate(self.buffer.available_actions[step]),
-                            deterministic=True
                             )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
