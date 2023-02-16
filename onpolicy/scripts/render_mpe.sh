@@ -19,6 +19,6 @@ do
     --num_good_agents ${num_good_agents} --num_adversaries ${num_adversaries} --num_bubbles ${num_bubbles} --d_range ${d_range} \
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 1 \
     --n_training_threads 1 --n_rollout_threads 1 --use_render \
-    --episode_length 160 --script_length 80 --render_episodes 1 --use_wandb \
-    --model_dir "./results/MPE/simple_tag/rmappo/with_detect(mask)/wandb/run-20230214_044146-695xxvzl/files" 
+    --episode_length 170 --script_length 70 --render_episodes 1 --use_wandb 
+    # --model_dir "./results/MPE/simple_tag/rmappo/with_detect(mask)/wandb/run-20230215_072425-1hkw3wgd/files" 
 done
