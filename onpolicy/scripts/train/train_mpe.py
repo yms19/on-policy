@@ -62,7 +62,7 @@ def parse_args(args, parser):
     parser.add_argument('--d_range', type=float,
                         default=1, help="detection range of players")
     parser.add_argument('--num_bubbles', type=int,
-                        default=2, help="number of adversaries")
+                        default=0, help="number of bubbies")
     parser.add_argument('--script_length', type=int,
                         default=30, help="number of steps which script controls")
 

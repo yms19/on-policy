@@ -17,44 +17,44 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
         action_env[np.random.randint(5)]=1
     elif adv_strategy == 'escape_nearest':
         dists = []
-        for i in range(1, num_agents):
-            if obs[2+2*i]==0 and obs[3+2*i]==0:
+        for i in range(num_agents):
+            if obs[4+2*i]==0 and obs[5+2*i]==0:
                 dist = 100 # mask
             else:
-                dist = np.sqrt(np.sum(np.square([obs[2+2*i], obs[3+2*i]])))
+                dist = np.sqrt(np.sum(np.square([obs[4+2*i], obs[5+2*i]])))
             dists.append(dist)
-        nearest_index = np.argmin(np.array(dists)) + 1
-        if dists[nearest_index-1] == 100: # all good agents' position are masked
+        nearest_index = np.argmin(np.array(dists))
+        if dists[nearest_index] == 100: # all good agents' position are masked
             action_env[init_direction]=1
         else:
-            if abs(obs[2+2*nearest_index]) > abs(obs[3+2*nearest_index]):
-                i = 1 if obs[2+2*nearest_index] < 0 else 2 
+            if abs(obs[4+2*nearest_index]) > abs(obs[5+2*nearest_index]):
+                i = 1 if obs[4+2*nearest_index] < 0 else 2 
                 action_env[i]=1
             else:
-                i = 3 if obs[3+2*nearest_index] < 0 else 4
+                i = 3 if obs[5+2*nearest_index] < 0 else 4
                 action_env[i]=1 
 
     elif adv_strategy == 'escape_group':
         dists = []
-        for i in range(1, num_agents):
-            if obs[2+2*i]==0 and obs[3+2*i]==0:
+        for i in range(num_agents):
+            if obs[4+2*i]==0 and obs[5+2*i]==0:
                 dist = 100 # mask
             else:
-                dist = np.sqrt(np.sum(np.square([obs[2+2*i], obs[3+2*i]])))
+                dist = np.sqrt(np.sum(np.square([obs[4+2*i], obs[5+2*i]])))
             dists.append(dist)
         if min(dists) == 100:
             action_env[init_direction]=1
         else:
             dists_reciprocal = [1/x for x in dists]
-            dists_reciprocal_sum = np.sum(dists_reciprocal)
+            dists_reciprocal_sum = np.sqrt(np.sum(np.square(dists_reciprocal)))
             dists_reciprocal_norm = [x/dists_reciprocal_sum for x in dists_reciprocal]
-            for index in range(1, num_agents):
-                if abs(obs[2+2*index]) > abs(obs[3+2*index]):
-                    i = 1 if obs[2+2*index] < 0 else 2 
-                    action_env[i]+=1*dists_reciprocal_norm[index-1]
+            for index in range(num_agents):
+                if abs(obs[4+2*index]) > abs(obs[5+2*index]):
+                    i = 1 if obs[4+2*index] < 0 else 2 
+                    action_env[i]+=1*dists_reciprocal_norm[index]
                 else:
-                    i = 3 if obs[3+2*index] < 0 else 4
-                    action_env[i]+=1*dists_reciprocal_norm[index-1]
+                    i = 3 if obs[5+2*index] < 0 else 4
+                    action_env[i]+=1*dists_reciprocal_norm[index]
     elif adv_strategy == "stop":
         action_env[0] = 1
     else:
@@ -180,6 +180,7 @@ class MPERunner(Runner):
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
         win_count = 0
         fail_count = 0
+        adv_strategy = 'escape_group'
 
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
@@ -203,7 +204,7 @@ class MPERunner(Runner):
                 actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
 
                 for thread_index in range(self.all_args.n_rollout_threads):                    
-                    actions_env_adv = get_adv_action(self.all_args.num_agents, "escape_nearest",
+                    actions_env_adv = get_adv_action(self.all_args.num_agents, adv_strategy,
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
                     actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                 # pdb.set_trace()
@@ -456,7 +457,7 @@ class MPERunner(Runner):
             
             for step in range(self.episode_length+self.script_length):
                 calc_start = time.time()
-                adv_strategy = 'escape_nearest'
+                adv_strategy = 'escape_group'
                 mode = "scripts"
                 vels = []
 

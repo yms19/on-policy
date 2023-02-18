@@ -162,13 +162,13 @@ class Scenario(BaseScenario):
             if agent.adversary:
                 # agent.init_pos = np.array([0.49634608, 0.39536529])
                 # print("agent.init_pos is: ", agent.init_pos) 
-                x, y = (1.1946880595076337, 0.6371084341637723)
-                # init_center = agent.init_pos 
-                # x = np.random.uniform(-1, +1) * init_radius + init_center[0]
-                # y = np.random.uniform(-1, +1) * init_radius + init_center[1]
-                # while not adversary_possible_range(init_center, np.array([x, y]), 840):
-                #     x = np.random.uniform(-1, +1) * init_radius + init_center[0]
-                #     y = np.random.uniform(-1, +1) * init_radius + init_center[1]
+                # x, y = (1.1946880595076337, 0.6371084341637723)
+                init_center = agent.init_pos 
+                x = np.random.uniform(-1, +1) * init_radius + init_center[0]
+                y = np.random.uniform(-1, +1) * init_radius + init_center[1]
+                while not adversary_possible_range(init_center, np.array([x, y]), 840):
+                    x = np.random.uniform(-1, +1) * init_radius + init_center[0]
+                    y = np.random.uniform(-1, +1) * init_radius + init_center[1]
                 # print("\ninit_pos is:({},{})".format(x, y))
                 agent.state.p_pos = np.array([x, y], dtype=float)
                 agent.state.p_vel = np.zeros(world.dim_p)
