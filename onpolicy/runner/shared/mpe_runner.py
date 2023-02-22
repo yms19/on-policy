@@ -180,7 +180,7 @@ class MPERunner(Runner):
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
         win_count = 0
         fail_count = 0
-        adv_strategy = 'escape_group'
+        adv_strategy = 'escape_nearest'
 
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
@@ -220,11 +220,9 @@ class MPERunner(Runner):
                     else:
                         share_obs = obs
 
-                    obs = obs[:, 1:, :]
-                    available_actions = available_actions[:, 1:, :]
                     self.buffer.share_obs[0] = share_obs.copy()
-                    self.buffer.obs[0] = obs.copy()
-                    self.buffer.available_actions[0] = available_actions.copy()
+                    self.buffer.obs[0] = obs[:, 1:, :].copy()
+                    self.buffer.available_actions[0] = available_actions[:, 1:, :].copy()
 
                 for thread_index in range(self.all_args.n_rollout_threads):
                     for agent_index in range(self.num_agents):
@@ -245,7 +243,6 @@ class MPERunner(Runner):
                     # insert data into buffer
                     self.insert(data)
                 # print("finish episode {} step {}".format(episode,step))                
-
             # for i in range(self.num_agents):
             #     average_episode_rewards = np.sum(self.buffer.rewards[:, :, i])
             #     print("eval average episode rewards of agent%i: " % i + str(average_episode_rewards))

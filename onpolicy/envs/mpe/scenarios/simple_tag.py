@@ -117,7 +117,7 @@ class Scenario(BaseScenario):
             agent.adversary = True if i < num_adversaries else False
             agent.dummy = True if i >= num_adversaries + num_good_agents else False
             agent.size = 0.025 if agent.adversary else 0.015 if not agent.dummy else 0.005
-            agent.accel = 0.003 if agent.adversary else 0.1 # if not agent.dummy else 5.0
+            agent.accel = 0.006 if agent.adversary else 0.1 # if not agent.dummy else 5.0
             #agent.accel = 20.0 if agent.adversary else 25.0
             agent.max_speed = 0.0006 if agent.adversary else 0.004 # if not agent.dummy else 1.5
             agent.d_range = 2 * args.d_range if agent.adversary else args.d_range if not agent.dummy else None
@@ -162,7 +162,7 @@ class Scenario(BaseScenario):
             if agent.adversary:
                 # agent.init_pos = np.array([0.49634608, 0.39536529])
                 # print("agent.init_pos is: ", agent.init_pos) 
-                # x, y = (1.1946880595076337, 0.6371084341637723)
+                # x, y = (0.7471036020911166, 0.3160942706958574)
                 init_center = agent.init_pos 
                 x = np.random.uniform(-1, +1) * init_radius + init_center[0]
                 y = np.random.uniform(-1, +1) * init_radius + init_center[1]
@@ -269,15 +269,15 @@ class Scenario(BaseScenario):
         #     rew += 5
 
         # agents are penalized for exiting the screen, so that they can be caught by the adversaries
-        def bound(x):
-            if x < 1.4:
-                return 0
-            if x < 1.5:
-                return (x - 1.4) * 10
-            return min(np.exp(2 * x - 2.8), 10)
-        for p in range(world.dim_p):
-            x = abs(agent.state.p_pos[p])
-            rew -= bound(x)
+        # def bound(x):
+        #     if x < 1.9:
+        #         return 0
+        #     if x < 2:
+        #         return (x - 1.9) * 10
+        #     return min(np.exp(2 * x - 3.8), 10)
+        # for p in range(world.dim_p):
+        #     x = abs(agent.state.p_pos[p])
+        #     rew -= bound(x)
             
         # def guide(x):
         #     if x < init_range:
