@@ -119,7 +119,7 @@ class Scenario(BaseScenario):
             agent.size = 0.025 if agent.adversary else 0.015 if not agent.dummy else 0.005
             agent.accel = 0.006 if agent.adversary else 0.1 # if not agent.dummy else 5.0
             #agent.accel = 20.0 if agent.adversary else 25.0
-            agent.max_speed = 0.0006 if agent.adversary else 0.004 # if not agent.dummy else 1.5
+            agent.max_speed = 0.0003 if agent.adversary else 0.004 # if not agent.dummy else 1.5
             agent.d_range = 2 * args.d_range if agent.adversary else args.d_range if not agent.dummy else None
             agent.action_callback = hit if agent.dummy else None
             agent.holder = world.agents[i-num_good_agents] if agent.dummy else None

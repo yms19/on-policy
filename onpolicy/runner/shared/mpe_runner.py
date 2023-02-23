@@ -1,12 +1,14 @@
 import time
 import numpy as np
 import torch
-from onpolicy.runner.shared.base_runner import Runner
 from pyvirtualdisplay.smartdisplay import SmartDisplay
 from PIL import Image, ImageDraw, ImageFont
 import wandb
 import imageio
 import pdb
+
+from onpolicy.runner.shared.base_runner import Runner
+from onpolicy.utils.shared_buffer import SharedReplayBuffer
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -170,6 +172,20 @@ class MPERunner(Runner):
         super(MPERunner, self).__init__(config)
         self.adv_obs = np.zeros((self.all_args.n_rollout_threads, 1, *self.envs.observation_space[0].shape))
         self.script_length = self.all_args.script_length
+        self.num_adversaries = self.all_args.num_adversaries
+        self.num_good_agent
+        # init buffer for adv and good
+        share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
+        self.buffer = {'adv': SharedReplayBuffer(self.all_args,
+                                    self.num_adversaries,
+                                    self.envs.observation_space[0],
+                                    share_observation_space,
+                                    self.envs.action_space[0]),
+                        'good': SharedReplayBuffer(self.all_args,
+                                    self.num_good_agents,
+                                    self.observation_space[0],
+                                    share_observation_space,
+                                    self.envs.action_space[0])}
 
     def run(self):
         self.warmup()
