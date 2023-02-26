@@ -119,8 +119,8 @@ def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
-    elif agent_id == 0 and step in range(185, 226):
-        if step in range(185, 225):
+    elif agent_id == 0 and step in range(185, 188):
+        if step in range(185, 187):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
@@ -129,18 +129,18 @@ def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1            
-    elif agent_id == 1 and step in range(197, 238):
-        if step in range(197, 237):
-            action_env[0][5] = 1
-        else:
-            action_env[0][6] = 1  
+    # elif agent_id == 1 and step in range(197, 198):
+    #     if step in range(197, 217):
+    #         action_env[0][5] = 1
+    #     else:
+    #         action_env[0][6] = 1  
     elif agent_id == 2 and step in range(121, 162):
         if step in range(121, 161):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
-    elif agent_id == 2 and step in range(188, 229):
-        if step in range(188, 228):
+    elif agent_id == 2 and step in range(188, 190):
+        if step in range(188, 189):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
