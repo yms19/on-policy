@@ -588,7 +588,7 @@ class MPERunner(Runner):
             for agent_id in range(self.num_agents):
                 average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
                 print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
-                accumulate_reward[agent_id] += average_episode_rewards
+                accumulate_reward[agent_id] += average_episode_rewards            
 
         if self.all_args.save_gifs:
             print(self.gif_dir)
