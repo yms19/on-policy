@@ -350,9 +350,10 @@ class MPERunner(Runner):
             win_count += np.sum(win)
             fail_count += self.all_args.n_rollout_threads - np.sum(win)
             # print("episode{} average episode rewards is {}".format(episode, np.mean(self.buffer.rewards) * self.episode_length))
-            self.compute()
-            train_infos = self.train()
-            # train_infos = {}
+            train_infos = {}
+            for role_id in self.role:
+                self.compute(role=role_id)
+                train_infos[role_id] = self.train(role=role_id)
             
             # post process
             total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
@@ -381,17 +382,19 @@ class MPERunner(Runner):
                     for agent_id in range(self.num_agents):
                         idv_rews = []
                         for info in infos:
-                            if 'individual_reward' in info[agent_id+1].keys():
-                                idv_rews.append(info[agent_id+1]['individual_reward'])
-                        agent_k = 'agent%i/individual_rewards' % (agent_id+1)
+                            if 'individual_reward' in info[agent_id].keys():
+                                idv_rews.append(info[agent_id]['individual_reward'])
+                        agent_k = 'agent%i/individual_rewards' % (agent_id)
                         env_infos[agent_k] = idv_rews
 
-                train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
+                for role_id in self.role:
+                    train_infos[role_id]["average_episode_rewards"] = np.mean(self.buffer[role_id].rewards) * self.episode_length
+                    print("average_episode_rewards" + role_id + " is {}".format(train_infos[role_id]["average_episode_rewards"]))
                 train_infos["win_rate"] = win_count / (win_count + fail_count)
                 train_infos["average_detect_step"] = np.sum(win_step)/win_count
-                print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
                 print("win rate is {:.2f}%".format(train_infos["win_rate"]*100))
-                self.log_train(train_infos, total_num_steps)
+                for role_id in self.role:
+                    self.log_train(train_infos[role_id], total_num_steps)
                 self.log_env(env_infos, total_num_steps)
                 win_count = 0
                 fail_count = 0
@@ -429,12 +432,12 @@ class MPERunner(Runner):
     def collect(self, step, role=None):
         self.trainer[role].prep_rollout()
         value, action, action_log_prob, rnn_states, rnn_states_critic \
-            = self.trainer[role].policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
-                            np.concatenate(self.buffer.obs[step]),
-                            np.concatenate(self.buffer.rnn_states[step]),
-                            np.concatenate(self.buffer.rnn_states_critic[step]),
-                            np.concatenate(self.buffer.masks[step]),
-                            np.concatenate(self.buffer.available_actions[step]),
+            = self.trainer[role].policy.get_actions(np.concatenate(self.buffer[role].share_obs[step]),
+                            np.concatenate(self.buffer[role].obs[step]),
+                            np.concatenate(self.buffer[role].rnn_states[step]),
+                            np.concatenate(self.buffer[role].rnn_states_critic[step]),
+                            np.concatenate(self.buffer[role].masks[step]),
+                            np.concatenate(self.buffer[role].available_actions[step]),
                             )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
