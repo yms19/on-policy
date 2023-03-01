@@ -197,7 +197,7 @@ class MPERunner(Runner):
                 'good':Policy(self.all_args,
                     self.envs.observation_space[0],
                     share_observation_space,
-                    self.envs.action_space[0],
+                    self.envs.action_space[self.num_adversaries],
                     device = self.device)}
         
         for role_id in self.role:
@@ -218,7 +218,7 @@ class MPERunner(Runner):
                                     self.num_good_agents,
                                     self.envs.observation_space[0],
                                     share_observation_space,
-                                    self.envs.action_space[0])}        
+                                    self.envs.action_space[self.num_adversaries])}        
 
     def restore(self, role):
         """Restore policy's networks from a saved model."""
@@ -253,8 +253,8 @@ class MPERunner(Runner):
 
     def run(self):
         self.warmup()
-        obs = self.buffer.obs[0]
-        available_actions = self.buffer.available_actions[0] 
+        # obs = self.buffer.obs[0]
+        # available_actions = self.buffer.available_actions[0] 
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
@@ -320,7 +320,8 @@ class MPERunner(Runner):
                             win[thread_index] = 1
                             if win_step[thread_index]==0:
                                 win_step[thread_index] = step+1
-                # print("step%d action"%step, actions[0][0], actions[0][1], actions[0][2], actions[0][3])
+                # print("step%d action"%step, actions_env_all[0][0], actions_env_all[0][1], actions_env_all[0][2], actions_env_all[0][3], actions_env_all[0][4])
+                # print("step%d reward"%step, rewards[0][0], rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
                 # print("step%d avail"%step,  available_actions[0][1], available_actions[0][2], available_actions[0][3], available_actions[0][4])
 
                 # for i in range(self.num_agents):
@@ -341,7 +342,7 @@ class MPERunner(Runner):
 
                         # insert data into buffer
                         self.insert(data, role=role_id)
-                # print("finish episode {} step {}".format(episode,step))                
+                # print("finish episode {} step {}".format(episode,step))              
             # for i in range(self.num_agents):
             #     average_episode_rewards = np.sum(self.buffer.rewards[:, :, i])
             #     print("eval average episode rewards of agent%i: " % i + str(average_episode_rewards))
@@ -361,7 +362,7 @@ class MPERunner(Runner):
             # save model
             if (episode % self.save_interval == 0 or episode == episodes - 1):
                 # print("\nModel save to {}".format(self.save_dir))
-                for role_id in self.roles:
+                for role_id in self.role:
                     self.save(role_id)
 
             # log information
@@ -389,7 +390,7 @@ class MPERunner(Runner):
 
                 for role_id in self.role:
                     train_infos[role_id]["average_episode_rewards"] = np.mean(self.buffer[role_id].rewards) * self.episode_length
-                    print("average_episode_rewards" + role_id + " is {}".format(train_infos[role_id]["average_episode_rewards"]))
+                    print("average_episode_rewards of " + role_id + " is {}".format(train_infos[role_id]["average_episode_rewards"]))
                 train_infos["win_rate"] = win_count / (win_count + fail_count)
                 train_infos["average_detect_step"] = np.sum(win_step)/win_count
                 print("win rate is {:.2f}%".format(train_infos["win_rate"]*100))
@@ -431,6 +432,7 @@ class MPERunner(Runner):
     @torch.no_grad()
     def collect(self, step, role=None):
         self.trainer[role].prep_rollout()
+        role_range = self.num_agents_range[role]
         value, action, action_log_prob, rnn_states, rnn_states_critic \
             = self.trainer[role].policy.get_actions(np.concatenate(self.buffer[role].share_obs[step]),
                             np.concatenate(self.buffer[role].obs[step]),
@@ -454,7 +456,7 @@ class MPERunner(Runner):
                 else:
                     actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
         elif self.envs.action_space[0].__class__.__name__ == 'Discrete':
-            actions_env = np.squeeze(np.eye(self.envs.action_space[0].n)[actions], 2)
+            actions_env = np.squeeze(np.eye(self.envs.action_space[role_range[0]].n)[actions], 2)
         else:
             raise NotImplementedError
 

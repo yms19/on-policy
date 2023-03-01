@@ -109,7 +109,7 @@ class Scenario(BaseScenario):
         init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)
         init_pos_adv = [-1, 0.5]
-        init_dis = 1.5
+        init_dis = 0
         for i, agent in enumerate(world.agents):
             agent.name = 'agent %d' % i
             agent.collide = True
@@ -149,7 +149,7 @@ class Scenario(BaseScenario):
         # set random initial states
         init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
         init_pos_adv = [-1, 0.5]
-        init_dis = 1.5
+        init_dis = 0
         # init_angle = adversary_init_angle(270, 360)
         init_angle = 0
 
@@ -269,15 +269,15 @@ class Scenario(BaseScenario):
         #     rew += 5
 
         # agents are penalized for exiting the screen, so that they can be caught by the adversaries
-        # def bound(x):
-        #     if x < 1.9:
-        #         return 0
-        #     if x < 2:
-        #         return (x - 1.9) * 10
-        #     return min(np.exp(2 * x - 3.8), 10)
-        # for p in range(world.dim_p):
-        #     x = abs(agent.state.p_pos[p])
-        #     rew -= bound(x)
+        def bound(x):
+            if x < 1.9:
+                return 0
+            if x < 2:
+                return (x - 1.9) * 10
+            return min(np.exp(2 * x - 3.8), 10)
+        for p in range(world.dim_p):
+            x = abs(agent.state.p_pos[p])
+            rew -= bound(x)
             
         # def guide(x):
         #     if x < init_range:
@@ -310,10 +310,9 @@ class Scenario(BaseScenario):
         if shape:  # reward can optionally be shaped (decreased reward for increased distance from agents)
             for adv in adversaries:
                 rew -= 0.1 * min([np.sqrt(np.sum(np.square(a.state.p_pos - adv.state.p_pos))) for a in agents])
-        if agent.collide:
-            for ag in agents:
-                if ag.detected and self.is_detected(ag, agent):
-                    rew -= 10
+        for ag in agents:
+            if ag.detected and self.is_detected(ag, agent):
+                rew = -10
         return rew
 
     def observation(self, agent, world):
@@ -339,7 +338,6 @@ class Scenario(BaseScenario):
                 other_pos.append((other.state.p_pos - agent.state.p_pos) * (1 - mask))
                 if not other.adversary:
                     other_vel.append((other.state.p_vel) * (1 - mask))
-            other_vel = other_vel[:-1]
         else:
             for other in world.agents:
                 if other is agent or other.dummy: continue
@@ -352,7 +350,10 @@ class Scenario(BaseScenario):
                     other_vel.append(other.state.p_vel)
 
         # return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [self.adversaries(world)[0].init_pos])
+        if agent.adversary:
+            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel)
+        else:
+            return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [self.adversaries(world)[0].init_pos])
     
     def info(self, agent, world):
         info = {'detect_times' : 0,
