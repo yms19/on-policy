@@ -223,11 +223,11 @@ class MPERunner(Runner):
 
     def restore(self, role):
         """Restore policy's networks from a saved model."""
-        policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor_%s.pt' % role)
-        self.policy.actor.load_state_dict(policy_actor_state_dict)
+        policy_actor_state_dict = torch.load(str(self.model_dir[role]) + '/actor_%s.pt' % role)
+        self.policy[role].actor.load_state_dict(policy_actor_state_dict)
         if not self.all_args.use_render:
-            policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic_%s.pt' % role)
-            self.policy.critic.load_state_dict(policy_critic_state_dict)
+            policy_critic_state_dict = torch.load(str(self.model_dir[role]) + '/critic_%s.pt' % role)
+            self.policy[role].critic.load_state_dict(policy_critic_state_dict)
 
     def save(self, role):
         """Save policy's actor and critic networks."""
@@ -539,12 +539,11 @@ class MPERunner(Runner):
         step_count = 0
         accumulate_reward = np.zeros((self.all_args.num_good_agents))
         for episode in range(self.all_args.render_episodes):
-            obs, avail_actions = envs.reset()
-            
+            obs, avail_actions = envs.reset()            
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
             win = np.zeros((self.n_rollout_threads))
             win_step = np.zeros((self.n_rollout_threads))
-            print("init_pos: ({}, {})".format(self.adv_obs[0][2], self.adv_obs[0][3]))
+            print("init_pos: ({}, {})".format(obs[0][0][2], obs[0][0][3]))
             infos = [[{'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
                     {'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
                     {'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
@@ -558,9 +557,13 @@ class MPERunner(Runner):
                 time.sleep(0.02)
             # else:
             #     envs.render('human')
-
-            rnn_states = np.zeros((self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
-            masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            rnn_states_roles = {}
+            masks_roles = {}
+            for role_id in self.role:
+                role_range = self.num_agents_role[role_id]
+                role_num = self.num_agents_role[role_id]
+                rnn_states_roles[role_id] = np.zeros((self.n_rollout_threads, role_num, self.recurrent_N, self.hidden_size), dtype=np.float32)
+                masks_roles[role_id] = np.ones((self.n_rollout_threads, role_num, 1), dtype=np.float32)
             
             episode_rewards = []
             
@@ -569,13 +572,12 @@ class MPERunner(Runner):
                 adv_strategy = 'escape_group'
                 mode = "scripts"
                 vels = {}
-                rnn_states_roles = {}
                 actions_env_roles = []
 
-                for role_id in self.roles:
+                for role_id in self.role:
                     role_range = self.num_agents_range[role_id]
                     vels[role_id] = []
-                    if self.all_args.model_dir[role_id] is not None:
+                    if self.model_dir[role_id] is not None:
                         if step < self.script_length:
                             actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
                             for thread_index in range(self.all_args.n_rollout_threads):
@@ -584,10 +586,10 @@ class MPERunner(Runner):
                                     # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
                             # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                         else:
-                            self.trainer.prep_rollout()
-                            action, rnn_states = self.trainer.policy.act(np.concatenate(obs[:,role_range[0]:role_range[1]+1 ,:]),
+                            self.trainer[role_id].prep_rollout()
+                            action, rnn_states = self.trainer[role_id].policy.act(np.concatenate(obs[:,role_range[0]:role_range[1]+1 ,:]),
                                                                 np.concatenate(rnn_states_roles[role_id]),
-                                                                np.concatenate(masks[role_id]),
+                                                                np.concatenate(masks_roles[role_id]),
                                                                 np.concatenate(avail_actions[:,role_range[0]:role_range[1]+1 ,:]),
                                                                 deterministic=True)
                             actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
@@ -605,7 +607,7 @@ class MPERunner(Runner):
                                 raise NotImplementedError
                             rnn_states_roles[role_id] = rnn_states
                             
-                            for thread_index in self.n_rollout_threads:                            
+                            for thread_index in range(self.n_rollout_threads):                            
                                 for agent_index in range(role_range[0], role_range[1]+1):
                                     vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                                     vels[role_id].append(vel)
@@ -637,8 +639,6 @@ class MPERunner(Runner):
                 # Obser reward and next obs
                 actions_env_all = np.concatenate(actions_env_roles,axis=1)
                 obs, rewards, dones, infos, avail_actions = envs.step(actions_env_all)
-                print(dones.shape)
-                exit()
                 # print("step%d reward"%step, rewards[0][0], rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
                 # print("step%d avail"%step,  avail_actions[0][1], avail_actions[0][2], avail_actions[0][3], avail_actions[0][4])
                 # print("step%d"%step)
@@ -650,15 +650,18 @@ class MPERunner(Runner):
                                 win[thread_index] = 1
                                 win_step[thread_index] = step+1
 
-                episode_rewards.append(rewards)
+                episode_rewards.append(rewards[:, self.num_adversaries:, :])
                 
                 # print("step%d reward"%step, rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
                 for role_id in self.role:
-                    role_range = self.num_agents_role[role_id]
+                    role_range = self.num_agents_range[role_id]
                     role_num = self.num_agents_role[role_id]
-                    rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
-                    masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
-                    masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
+
+                    rnn_states_roles[role_id][dones[:, role_range[0]:role_range[1]+1] == True] = np.zeros(((dones[:, role_range[0]:role_range[1]+1] == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+                    masks = np.ones((self.n_rollout_threads, role_num, 1), dtype=np.float32)
+                    masks[dones[:, role_range[0]:role_range[1]+1] == True] = np.zeros(((dones[:, role_range[0]:role_range[1]+1] == True).sum(), 1), dtype=np.float32)
+
+                    masks_roles[role_id] = masks
 
                 agent_info = "agent{} :   velocity : {:.2f}m/s    detect times : {}    detect the adversary : {}"
                 adversary_info = "agent{} :   (adversary) velocity : {:.2f}m/s    detect the adversary : {}    mode : {}"
@@ -672,12 +675,12 @@ class MPERunner(Runner):
                     img_pil = Image.fromarray(img, mode='RGB')
                     ttf = ImageFont.load_default()
                     img_draw = ImageDraw.Draw(img_pil)
-                    for i in range(self.num_agents+1):  
+                    for i in range(self.num_agents):  
                         if i == 0:
-                            img_draw.text((20, 20+15*i), adversary_info.format(i, vels[i], infos[0][i]["detect_adversary"], mode), font=ttf, fill=(0, 0, 0))
+                            img_draw.text((20, 20+15*i), adversary_info.format(i, vels['adv'][i], infos[0][i]["detect_adversary"], mode), font=ttf, fill=(0, 0, 0))
                         else:
                             # print(i, vels, infos)                      
-                            img_draw.text((20, 20+15*i), agent_info.format(i, vels[i], infos[0][i]["detect_times"], infos[0][i]["detect_adversary"]), font=ttf, fill=(0, 0, 0))
+                            img_draw.text((20, 20+15*i), agent_info.format(i, vels['good'][i-1], infos[0][i]["detect_times"], infos[0][i]["detect_adversary"]), font=ttf, fill=(0, 0, 0))
                     img_draw.text((20, 95), environment_info.format(int(step*4.5/60), step*4.5%60, win_count, fail_count),
                             font=ttf, fill=(0, 0, 0))
                     img_text = np.asarray(img_pil)
@@ -699,9 +702,9 @@ class MPERunner(Runner):
 
             episode_rewards = np.array(episode_rewards)
             print("result of episode %i:" % episode)
-            for agent_id in range(self.num_agents):
+            for agent_id in range(self.num_good_agents):
                 average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
-                print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
+                print("eval average episode rewards of agent%i: " % (agent_id+1) + str(average_episode_rewards))
                 accumulate_reward[agent_id] += average_episode_rewards
 
         if self.all_args.save_gifs:

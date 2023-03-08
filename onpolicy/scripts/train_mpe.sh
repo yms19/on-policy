@@ -1,4 +1,3 @@
-
 #!/bin/sh
 env="MPE"
 scenario="simple_tag"  # simple_speaker_listener # simple_reference

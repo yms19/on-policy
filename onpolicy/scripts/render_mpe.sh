@@ -20,6 +20,6 @@ do
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 100 \
     --n_training_threads 1 --n_rollout_threads 1 --use_render \
     --episode_length 160 --script_length 0 --render_episodes 1 --use_wandb \
-    --model_dir_role1 "./results/MPE/simple_tag/rmappo/self-play/wandb/run-20230301_075634-3nzw53z8" \
-    --model_dir_role2 "./results/MPE/simple_tag/rmappo/self-play/wandb/run-20230301_075634-3nzw53z8"
+    --model_dir_role1 "./results/MPE/simple_tag/rmappo/self-play/wandb/run-20230301_075634-3nzw53z8/files" \
+    --model_dir_role2 "./results/MPE/simple_tag/rmappo/self-play/wandb/run-20230301_075634-3nzw53z8/files"
 done
