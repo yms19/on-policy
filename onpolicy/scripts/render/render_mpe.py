@@ -49,6 +49,10 @@ def parse_args(args, parser):
                         default=1, help="detection range of players")
     parser.add_argument('--script_length', type=int,
                         default=30, help="number of steps which script controls")
+    parser.add_argument("--model_dir_role1", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of adversaries.")
+    parser.add_argument("--model_dir_role2", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of good agents.")
 
     all_args = parser.parse_known_args(args)[0]
 
