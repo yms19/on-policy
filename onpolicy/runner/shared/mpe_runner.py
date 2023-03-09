@@ -592,7 +592,7 @@ class MPERunner(Runner):
                                                                 np.concatenate(masks_roles[role_id]),
                                                                 np.concatenate(avail_actions[:,role_range[0]:role_range[1]+1 ,:]),
                                                                 deterministic=True)
-                            actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
+                            actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
                             rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
                             if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
                                 for i in range(envs.action_space[0].shape):
@@ -633,8 +633,6 @@ class MPERunner(Runner):
                             else:
                                 raise NotImplementedError
                     actions_env_roles.append(actions_env)
-                    
-                # actions_env = np.zeros(shape=(self.n_rollout_threads, self.num_agents, 5))
 
                 # Obser reward and next obs
                 actions_env_all = np.concatenate(actions_env_roles,axis=1)
@@ -713,6 +711,6 @@ class MPERunner(Runner):
         
         print("win: {}\nfail: {}\nwin rate: {} %".format(win_count, fail_count, 100*win_count/(win_count+fail_count)))
         print("The average number of probe steps consumed is {}".format(step_count/win_count))
-        for agent_id in range(self.num_agents):
-            print("accumulative average episode rewards of agent%i: " % agent_id + str(accumulate_reward[agent_id]/self.all_args.render_episodes))
+        for agent_id in range(self.num_good_agents):
+            print("accumulative average episode rewards of agent%i: " % (agent_id+1) + str(accumulate_reward[agent_id]/self.all_args.render_episodes))
         
