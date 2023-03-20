@@ -75,6 +75,26 @@ def adversary_possible_range(init_center, pos, time):
         else:
             return False
 
+def adversary_possible_range_circular(init_center, pos, time):
+        
+    def dis(pos1, pos2):
+        return np.sqrt(np.sum(np.square(pos1 - pos2)))
+    # (-pi, pi)
+    def angle(pos1, pos2):
+        delta_x, delta_y = pos1 - pos2
+        return math.atan2(delta_y, delta_x)
+    
+    dis_center = dis(pos, init_center)
+    angle_center = angle(pos, init_center)
+    velocity = 5.56 # m/s
+    run_dis = velocity * time
+    outer = 0.55 + run_dis/1000 * 0.05
+    inner = max(0.45 - run_dis/1000 *0.05, 0)
+    if run_dis >= inner and run_dis <= outer and angle_center >= 0:
+        return True
+    else:
+        return False
+
 def adversary_init_angle(low, high):
     return np.random.randint(low, high)/360 * 2 * math.pi
 

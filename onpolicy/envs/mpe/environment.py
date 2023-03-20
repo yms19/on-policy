@@ -370,48 +370,59 @@ class MultiAgentEnv(gym.Env):
                         entity_comm_geoms.append(comm)
                     
                     if entity.adversary:
-                        guess_center = entity.init_pos
-                        init_range = 0.5
-                        guess_v = 5.56 # m/s
-                        run_dis = (840 + self.world.dt * self.current_step) *  guess_v / 1000 * 0.05
-                        angle = math.pi/4
+                        possible_range = "circular"
+                        if possible_range == "fan":
+                            guess_center = entity.init_pos
+                            init_range = 0.5
+                            guess_v = 5.56 # m/s
+                            run_dis = (840 + self.world.dt * self.current_step) *  guess_v / 1000 * 0.05
+                            angle = math.pi/4
 
-                        radius = init_range + run_dis
+                            radius = init_range + run_dis
 
-                        points = []
-                        res = 10
-                        for i in range(res+1):
-                            ang1 = (math.pi-angle) * i / res + (math.pi-angle)
-                            points.append((math.cos(ang1)*run_dis, math.sin(ang1)*run_dis))
-                        for i in range(res+1):
-                            ang2 = (math.pi/2) * i / res + (math.pi * 3 / 2)
-                            points.append((math.cos(ang2)*run_dis + init_range, math.sin(ang2)*run_dis))
-                        for i in range(res+1):
-                            ang3 = angle * i / res
-                            points.append((math.cos(ang3)*radius, math.sin(ang3)*radius))
-                        for i in range(res+1):
-                            ang4 = (math.pi/2) * i / res + angle
-                            points.append((math.cos(ang4)*run_dis+init_range*math.cos(angle), math.sin(ang4)*run_dis+init_range*math.sin(angle)))
-                        area = rendering.make_polygon(points)
-                        area.set_color(0.2, 0.2, 0.2, alpha=0.2)
-                        pos = rendering.Transform()
-                        pos.set_translation(*guess_center)
-                        area.add_attr(pos)
-                        entity_comm_geoms.append(area)
+                            points = []
+                            res = 10
+                            for i in range(res+1):
+                                ang1 = (math.pi-angle) * i / res + (math.pi-angle)
+                                points.append((math.cos(ang1)*run_dis, math.sin(ang1)*run_dis))
+                            for i in range(res+1):
+                                ang2 = (math.pi/2) * i / res + (math.pi * 3 / 2)
+                                points.append((math.cos(ang2)*run_dis + init_range, math.sin(ang2)*run_dis))
+                            for i in range(res+1):
+                                ang3 = angle * i / res
+                                points.append((math.cos(ang3)*radius, math.sin(ang3)*radius))
+                            for i in range(res+1):
+                                ang4 = (math.pi/2) * i / res + angle
+                                points.append((math.cos(ang4)*run_dis+init_range*math.cos(angle), math.sin(ang4)*run_dis+init_range*math.sin(angle)))
+                            area = rendering.make_polygon(points)
+                            area.set_color(0.2, 0.2, 0.2, alpha=0.2)
+                            pos = rendering.Transform()
+                            pos.set_translation(*guess_center)
+                            area.add_attr(pos)
+                            entity_comm_geoms.append(area)
 
-                        init_pos = entity.init_pos
-                        left = - 0.3
-                        right = + 0.8
-                        up =  + 0.65
-                        down =  - 0.3
-                        range_points = ((left, up), (right, up), (right, down), (left, down))
-                        range_ = rendering.make_polygon(range_points, filled=False)
-                        range_.set_color(0, 0, 0)
-                        range_form = rendering.Transform()
-                        range_form.set_translation(*init_pos)
-                        range_.add_attr(range_form)
-                        entity_comm_geoms.append(range_)
+                        elif possible_range == "circular":
+                            guess_center = (0,0)
+                            guess_v = 5.56 # m/s
+                            angle = math.pi
+                            run_dis = (840 + self.world.dt * self.current_step) *  guess_v / 1000 * 0.05
+                            outer_radius = 0.55 + run_dis
+                            inner_radius = max(0.45 - run_dis, 0)
 
+                            points = []
+                            res = 15
+                            for i in range(res+1):
+                                ang1 = angle * i / res
+                                points.append((math.cos(ang1)*outer_radius, math.sin(ang1)*outer_radius))
+                            for i in range(res+1):
+                                ang2 = angle * i / res
+                                points.append((math.cos(ang2)*inner_radius, math.sin(ang2)*inner_radius))
+                            area = rendering.make_polygon(points)
+                            area.set_color(0.2, 0.2, 0.2, alpha=0.2)
+                            pos = rendering.Transform()
+                            pos.set_translation(*guess_center)
+                            area.add_attr(pos)
+                            entity_comm_geoms.append(area)
 
                 else:
                     geom.set_color(*entity.color)

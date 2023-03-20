@@ -89,22 +89,11 @@ def get_good_action(num_agents, obs, agent_id, step, avail_action):
 def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
     adv_x = 4
     adv_y = 5
-    detect_threshold = 0.01
     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
     adv_center = [obs[18], obs[19]]
     target_pos1 = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3]]
     target_pos2 = [[adv_center[0]-0.2, adv_center[1]], [adv_center[0]+0.17, adv_center[1]+0.57], [adv_center[0]+0.7, adv_center[1]-0.1], [adv_center[0]+0.7, adv_center[1]+0.3]]
-    # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
-    # target_pos = [[obs[18], obs[19]]] * 4
     action_env = np.zeros(shape=(1, 7))
-    # print(obs)
-    # print(target_pos)
-    # exit()        
-    # if step in range(80+agent_id*10, 120+agent_id*10):
-    #     action_env[0][5]=1
-    # elif step == 120+agent_id*10:
-    #     action_env[0][6]=1
-    # else:
     if obs[adv_x] == 0 and obs[adv_y] == 0 :
         if step < 173:
             obs[adv_x] = target_pos1[agent_id][0] + init_pos[agent_id][0] - obs[2]
@@ -119,8 +108,8 @@ def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
-    elif agent_id == 0 and step in range(185, 188):
-        if step in range(185, 187):
+    elif agent_id == 0 and step in range(185, 226):
+        if step in range(185, 225):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
@@ -129,18 +118,18 @@ def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1            
-    # elif agent_id == 1 and step in range(197, 198):
-    #     if step in range(197, 217):
-    #         action_env[0][5] = 1
-    #     else:
-    #         action_env[0][6] = 1  
+    elif agent_id == 1 and step in range(197, 238):
+        if step in range(197, 237):
+            action_env[0][5] = 1
+        else:
+            action_env[0][6] = 1  
     elif agent_id == 2 and step in range(121, 162):
         if step in range(121, 161):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
-    elif agent_id == 2 and step in range(188, 190):
-        if step in range(188, 189):
+    elif agent_id == 2 and step in range(188, 229):
+        if step in range(188, 228):
             action_env[0][5] = 1
         else:
             action_env[0][6] = 1
