@@ -292,6 +292,7 @@ class MPERunner(Runner):
                         actions_env_roles.append(actions_env)
 
                 actions_env_all = np.concatenate(actions_env_roles,axis=1)
+                # print("step%d action:"%step,np.argmax(actions_env_all[0][0]), np.argmax(actions_env_all[0][1]), np.argmax(actions_env_all[0][2]), np.argmax(actions_env_all[0][3]), np.argmax(actions_env_all[0][4]))
 
                 # pdb.set_trace()
                     
@@ -339,7 +340,7 @@ class MPERunner(Runner):
 
                         # insert data into buffer
                         self.insert(data, role=role_id)
-                # print("finish episode {} step {}".format(episode,step))              
+                # print("finish episode {} step {}".format(episode,step))    
             # for i in range(self.num_agents):
             #     average_episode_rewards = np.sum(self.buffer.rewards[:, :, i])
             #     print("eval average episode rewards of agent%i: " % i + str(average_episode_rewards))
@@ -350,6 +351,8 @@ class MPERunner(Runner):
             # print("episode{} average episode rewards is {}".format(episode, np.mean(self.buffer.rewards) * self.episode_length))
             train_infos = {}
             for role_id in self.role:
+                if role_id == "adv":
+                    if self.all_args.fix_adversary: continue
                 self.compute(role=role_id)
                 train_infos[role_id] = self.train(role=role_id)
             
@@ -360,6 +363,8 @@ class MPERunner(Runner):
             if (episode % self.save_interval == 0 or episode == episodes - 1):
                 # print("\nModel save to {}".format(self.save_dir))
                 for role_id in self.role:
+                    if role_id == "adv":
+                        if self.all_args.fix_adversary: continue
                     self.save(role_id)
 
             # log information
@@ -386,12 +391,16 @@ class MPERunner(Runner):
                         env_infos[agent_k] = idv_rews
 
                 for role_id in self.role:
+                    if role_id == "adv":
+                        if self.all_args.fix_adversary: continue
                     train_infos[role_id]["average_episode_rewards"] = np.mean(self.buffer[role_id].rewards) * self.episode_length
                     print("average_episode_rewards of " + role_id + " is {}".format(train_infos[role_id]["average_episode_rewards"]))
                 train_infos["good"]["win_rate"] = win_count / (win_count + fail_count)
                 train_infos["good"]["average_detect_step"] = np.sum(win_step)/win_count
                 print("win rate is {:.2f}%".format(train_infos["good"]["win_rate"]*100))
                 for role_id in self.role:
+                    if role_id == "adv":
+                        if self.all_args.fix_adversary: continue
                     self.log_train(train_infos[role_id], total_num_steps)
                 self.log_env(env_infos, total_num_steps)
                 win_count = 0
@@ -436,7 +445,7 @@ class MPERunner(Runner):
                             np.concatenate(self.buffer[role].rnn_states[step]),
                             np.concatenate(self.buffer[role].rnn_states_critic[step]),
                             np.concatenate(self.buffer[role].masks[step]),
-                            np.concatenate(self.buffer[role].available_actions[step]),
+                            np.concatenate(self.buffer[role].available_actions[step])
                             )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
@@ -579,11 +588,11 @@ class MPERunner(Runner):
                             for thread_index in range(self.all_args.n_rollout_threads):
                                 for agent_index in range(role_range[0], role_range[1]+1):
                                     if role_id == "adv":
-                                        actions_env[thread_index][agent_index] = get_adv_action(self.num_good_agents, obs[thread_index][agent_index], 
-                                                                                                agent_index, step, avail_actions[thread_index][agent_index])
+                                        actions_env[thread_index][agent_index] = get_adv_action(self.num_good_agents, adv_strategy,
+                                                                                                obs[thread_index][agent_index], init_direction)
                                     elif role_id == "good":
-                                        actions_env[thread_index][agent_index] = get_good_action(self.num_good_agents, obs[thread_index][agent_index], 
-                                                                                                agent_index-self.num_adversaries, step, avail_actions[thread_index][agent_index])
+                                        actions_env[thread_index][agent_index-self.num_adversaries] = get_good_action(self.num_good_agents, obs[thread_index][agent_index], 
+                                                                                                agent_index-self.num_adversaries, step)
                                     vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
                                     vels[role_id].append(vel)
 
@@ -641,6 +650,7 @@ class MPERunner(Runner):
                 # Obser reward and next obs
                 actions_env_all = np.concatenate(actions_env_roles,axis=1)
                 obs, rewards, dones, infos, avail_actions = envs.step(actions_env_all)
+                # print("step%d action:"%step,np.argmax(actions_env_all[0][0]), np.argmax(actions_env_all[0][1]), np.argmax(actions_env_all[0][2]), np.argmax(actions_env_all[0][3]), np.argmax(actions_env_all[0][4]))
                 # print("step%d reward"%step, rewards[0][0], rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
                 # print("step%d avail"%step,  avail_actions[0][1], avail_actions[0][2], avail_actions[0][3], avail_actions[0][4])
                 # print("step%d"%step)
