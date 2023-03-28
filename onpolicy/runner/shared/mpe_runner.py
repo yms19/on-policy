@@ -65,7 +65,7 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
     return action_env
 
 # old version
-def get_good_action(num_agents, obs, agent_id, step, avail_action):
+def get_good_action(num_agents, obs, agent_id, step):
     adv_x = 4
     adv_y = 5
     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
@@ -159,7 +159,6 @@ class MPERunner(Runner):
     """Runner class to perform training, evaluation. and data collection for the MPEs. See parent class for details."""
     def __init__(self, config):
         super(MPERunner, self).__init__(config)
-        self.adv_obs = np.zeros((self.all_args.n_rollout_threads, 1, *self.envs.observation_space[0].shape))
         self.script_length = self.all_args.script_length
         self.num_adversaries = self.all_args.num_adversaries
         self.num_good_agents = self.all_args.num_good_agents
@@ -269,11 +268,18 @@ class MPERunner(Runner):
                 actions_env_roles = []
                 # Sample actions
                 if step < self.script_length:
-                    actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
-                    for thread_index in range(self.all_args.n_rollout_threads):
-                        for agent_index in range(self.num_agents):
-                            actions_env[thread_index][agent_index] = get_good_action(self.num_good_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step, available_actions[thread_index][agent_index-self.num_agents])
+                    for role_id in self.role:
+                        role_range = self.num_agents_range[role_id]
+                        actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents_role[role_id], 7])
+                        obs = self.buffer[role_id].obs[0]
+                        for thread_index in range(self.all_args.n_rollout_threads):
+                            for agent_index in range(self.num_agents_role[role_id]):
+                                if role_id == "adv":
+                                    actions_env[thread_index][agent_index] = get_adv_action(self.num_good_agents, adv_strategy, obs[thread_index][agent_index], init_direction)
+                                elif role_id == "good":
+                                    actions_env[thread_index][agent_index] = get_good_action(self.num_good_agents, obs[thread_index][agent_index], agent_index, step)
                             # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
+                        actions_env_roles.append(actions_env)
                     # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
                     for role_id in self.role:
@@ -291,7 +297,6 @@ class MPERunner(Runner):
                     
                 # Obser reward and next obs
                 obs, rewards, dones, infos, available_actions = self.envs.step(actions_env_all)
-                self.adv_obs = obs[:, 0, :].copy()
 
                 if step == self.script_length - 1:
                     if self.use_centralized_V:
@@ -299,10 +304,12 @@ class MPERunner(Runner):
                         share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
                     else:
                         share_obs = obs
-
-                    self.buffer.share_obs[0] = share_obs.copy()
-                    self.buffer.obs[0] = obs[:, 1:, :].copy()
-                    self.buffer.available_actions[0] = available_actions[:, 1:, :].copy()
+                    
+                    for role_id in self.role:
+                        role_range = self.num_agents_range[role_id]
+                        self.buffer[role_id].share_obs[0] = share_obs[:,role_range[0]:role_range[1]+1].copy()
+                        self.buffer[role_id].obs[0] = obs[:,role_range[0]:role_range[1]+1].copy()
+                        self.buffer[role_id].available_actions[0] = available_actions[:,role_range[0]:role_range[1]+1].copy()
 
                 for thread_index in range(self.all_args.n_rollout_threads):
                     for agent_index in range(self.num_adversaries,self.num_agents):
@@ -383,7 +390,7 @@ class MPERunner(Runner):
                     print("average_episode_rewards of " + role_id + " is {}".format(train_infos[role_id]["average_episode_rewards"]))
                 train_infos["good"]["win_rate"] = win_count / (win_count + fail_count)
                 train_infos["good"]["average_detect_step"] = np.sum(win_step)/win_count
-                print("win rate is {:.2f}%".format(train_infos["win_rate"]*100))
+                print("win rate is {:.2f}%".format(train_infos["good"]["win_rate"]*100))
                 for role_id in self.role:
                     self.log_train(train_infos[role_id], total_num_steps)
                 self.log_env(env_infos, total_num_steps)
@@ -568,10 +575,18 @@ class MPERunner(Runner):
                     vels[role_id] = []
                     if self.model_dir[role_id] is not None:
                         if step < self.script_length:
-                            actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
+                            actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents_role[role_id], 7])
                             for thread_index in range(self.all_args.n_rollout_threads):
-                                for agent_index in range(self.num_agents):
-                                    actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
+                                for agent_index in range(role_range[0], role_range[1]+1):
+                                    if role_id == "adv":
+                                        actions_env[thread_index][agent_index] = get_adv_action(self.num_good_agents, obs[thread_index][agent_index], 
+                                                                                                agent_index, step, avail_actions[thread_index][agent_index])
+                                    elif role_id == "good":
+                                        actions_env[thread_index][agent_index] = get_good_action(self.num_good_agents, obs[thread_index][agent_index], 
+                                                                                                agent_index-self.num_adversaries, step, avail_actions[thread_index][agent_index])
+                                    vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
+                                    vels[role_id].append(vel)
+
                                     # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
                             # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                         else:

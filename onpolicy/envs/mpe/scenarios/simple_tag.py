@@ -109,7 +109,7 @@ class Scenario(BaseScenario):
         init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)
         init_pos_adv = [-1, 0.5]
-        init_dis = 0
+        init_dis = 1.5
         for i, agent in enumerate(world.agents):
             agent.name = 'agent %d' % i
             agent.collide = True
@@ -149,7 +149,7 @@ class Scenario(BaseScenario):
         # set random initial states
         init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
         init_pos_adv = [-1, 0.5]
-        init_dis = 0
+        init_dis = 1.5
         # init_angle = adversary_init_angle(270, 360)
         init_angle = 0
 
