@@ -153,6 +153,18 @@ def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
     
     return action_env
 
+def _get_attn_share_obs(obs):
+    tmp_obs = np.zeros(shape=obs.shape)
+    all_obs = []
+    for agent_id in range(obs.shape[1]):
+        current_agent_obs = np.expand_dims(obs[:,agent_id],axis=1)
+        delete_obs = np.delete(obs,agent_id,axis=1)
+        all_obs.append(np.concatenate([delete_obs,current_agent_obs],axis=1))
+    # all_obs: [threads, agent, obs_dim] * agent
+    for i, obs_one in enumerate(all_obs):
+        all_obs[i] = obs_one.reshape(obs_one.shape[0], -1)
+    return np.array(all_obs).transpose(1,0,2)
+
 class MPERunner(Runner):
     """Runner class to perform training, evaluation. and data collection for the MPEs. See parent class for details."""
     def __init__(self, config):
@@ -203,11 +215,12 @@ class MPERunner(Runner):
                 self.adv_obs = obs[:, 0, :].copy()
 
                 if step == self.script_length - 1:
-                    if self.use_centralized_V:
-                        share_obs = obs.reshape(self.n_rollout_threads, -1)
-                        share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
-                    else:
-                        share_obs = obs
+                    # if self.use_centralized_V:
+                    #     share_obs = obs.reshape(self.n_rollout_threads, -1)
+                    #     share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+                    # else:
+                    #     share_obs = obs
+                    share_obs = _get_attn_share_obs(obs)[:, 1:, :]
 
                     self.buffer.share_obs[0] = share_obs.copy()
                     self.buffer.obs[0] = obs[:, 1:, :].copy()
@@ -295,12 +308,13 @@ class MPERunner(Runner):
         self.adv_obs = obs[:, 0, :].copy()        
 
         # replay buffer
-        if self.use_centralized_V:
-            share_obs = obs.reshape(self.n_rollout_threads, -1)
-            share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
-        else:
-            share_obs = obs
+        # if self.use_centralized_V:
+        #     share_obs = obs.reshape(self.n_rollout_threads, -1)
+        #     share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+        # else:
+        #     share_obs = obs
 
+        share_obs =  _get_attn_share_obs(obs)[:, 1:, :]
         obs = obs[:, 1:, :]
         available_actions = available_actions[:, 1:, :]
         self.buffer.share_obs[0] = share_obs.copy()
@@ -350,11 +364,12 @@ class MPERunner(Runner):
         masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
         masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
-        if self.use_centralized_V:
-            share_obs = obs.reshape(self.n_rollout_threads, -1)
-            share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
-        else:
-            share_obs = obs
+        # if self.use_centralized_V:
+        #     share_obs = obs.reshape(self.n_rollout_threads, -1)
+        #     share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+        # else:
+        #     share_obs = obs
+        share_obs = _get_attn_share_obs(obs)[:, 1:, :]
 
         self.buffer.insert(share_obs, obs[:, 1:, :], rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks, available_actions=available_actions[:, 1:, :])
 
