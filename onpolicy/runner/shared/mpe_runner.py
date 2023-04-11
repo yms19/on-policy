@@ -157,13 +157,14 @@ def _get_attn_share_obs(obs):
     tmp_obs = np.zeros(shape=obs.shape)
     all_obs = []
     for agent_id in range(obs.shape[1]):
-        current_agent_obs = np.expand_dims(obs[:,agent_id],axis=1)
-        delete_obs = np.delete(obs,agent_id,axis=1)
+        current_agent_obs = np.expand_dims(obs[:,agent_id],axis=1) #[thread, 1, obs_dim]
+        delete_obs = np.delete(obs,agent_id,axis=1) #[thread, 4, obs_dim]
         all_obs.append(np.concatenate([delete_obs,current_agent_obs],axis=1))
-    # all_obs: [threads, agent, obs_dim] * agent
+    # all_obs: [agent, threads, agent, obs_dim] * agent
     for i, obs_one in enumerate(all_obs):
         all_obs[i] = obs_one.reshape(obs_one.shape[0], -1)
     return np.array(all_obs).transpose(1,0,2)
+    # return [thread, agent, agent*obs_dim]
 
 class MPERunner(Runner):
     """Runner class to perform training, evaluation. and data collection for the MPEs. See parent class for details."""
