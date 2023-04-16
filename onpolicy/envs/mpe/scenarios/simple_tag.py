@@ -182,7 +182,7 @@ class Scenario(BaseScenario):
             if agent.adversary:
                 # agent.init_pos = np.array([0.49634608, 0.39536529])
                 # print("agent.init_pos is: ", agent.init_pos) 
-                # x, y = (1.1, 0.9)
+                # x, y = (1.1, 0.5)
                 init_center = agent.init_pos 
                 x = np.random.uniform(-1, +1) * init_radius + init_center[0]
                 y = np.random.uniform(-1, +1) * init_radius + init_center[1]

@@ -370,7 +370,7 @@ class MultiAgentEnv(gym.Env):
                         entity_comm_geoms.append(comm)
                     
                     if entity.adversary:
-                        possible_range = "circular"
+                        possible_range = "fan"
                         if possible_range == "fan":
                             guess_center = entity.init_pos
                             init_range = 0.5

@@ -412,7 +412,9 @@ class MPERunner(Runner):
         fail_count = 0
         step_count = 0
         accumulate_reward = np.zeros((self.all_args.num_good_agents))
+        start_time = time.time()
         for episode in range(self.all_args.render_episodes):
+            
             obs, avail_actions = envs.reset()
             self.adv_obs = obs[:, 0, :].copy()
             obs = obs[:, 1:, :]
@@ -577,7 +579,9 @@ class MPERunner(Runner):
             for agent_id in range(self.num_agents):
                 average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
                 print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
-                accumulate_reward[agent_id] += average_episode_rewards            
+                accumulate_reward[agent_id] += average_episode_rewards   
+        end_time = time.time()
+        print("one episode time consuming: ",end_time - start_time)
 
         if self.all_args.save_gifs:
             print(self.gif_dir)
