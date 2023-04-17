@@ -109,6 +109,39 @@ def in_range(left, right, up, down, pos):
     else:
         return False
 
+def get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, step):    
+    possible_grid_count = 0
+    probability_grid = np.zeros((20, 30))
+    if np.any(adversary_pos): # 有一个智能体探测到了敌方：只有敌方所在格点置1
+        row = int(adversary_pos[0] // 0.07)
+        col = int(adversary_pos[1] // 0.07)
+        probability_grid[row, col] = 1
+    else:   # 没有智能体探测到敌方：将所有正在进行探测的智能体探测范围内概率置0
+        start_row = 3 - step // 112
+        end_row = 14 + step // 112
+        start_col = 3 - step // 112
+        end_col = 16 + step // 112  
+        possible_grid_count = (end_row - start_row + 1) * (end_col - start_col + 1)      
+        zero_index = []
+        detect_agent_index = np.where(agent_detect_state)[0] # 正在执行探测的智能体编号
+        
+        for index in detect_agent_index:
+            agent_pos = agent_pos_all[index]
+            agent_row = int(agent_pos[0] // 0.07)
+            agent_col = int(agent_pos[1] // 0.07)
+            agent_start_row = max(agent_row - 2, start_row)
+            agent_end_row = min(agent_row + 2, end_row)
+            agent_start_col = max(agent_col - 2, start_col)
+            agent_end_col = min(agent_col + 2, end_col)
+            possible_grid_count -= (agent_end_row - agent_start_row + 1) * (agent_end_col - agent_start_col + 1)
+            zero_index.append([agent_start_row, agent_end_row, agent_start_col, agent_end_col])
+        
+        probability_grid[start_row:end_row+1, start_col:end_col+1] = 1 / possible_grid_count
+        for index in zero_index:
+            probability_grid[index[0]:index[1]+1, index[2]:index[3]+1] = 0
+        
+    return probability_grid.reshape((20*30)).tolist()
+
 
 class Scenario(BaseScenario):
     def make_world(self, args):
@@ -346,7 +379,12 @@ class Scenario(BaseScenario):
         comm = []
         other_pos = []
         other_vel = []
+
+        agent_pos_all = []
+        agent_pos_all.append(agent.state.p_pos)        
         detect_adversary = False
+        agent_detect_state = []
+        agent_detect_state.append(agent.detected)
         for agent_ in self.good_agents(world):
             if agent_.detected and self.is_detected(agent_, world.agents[0]):
                 detect_adversary = True
@@ -360,6 +398,7 @@ class Scenario(BaseScenario):
                 if not other.adversary:
                     other_vel.append((other.state.p_vel) * (1 - mask))
             other_vel = other_vel[:-1]
+            probability_grid = np.zeros((20*30)).tolist()
         else:
             for other in world.agents:
                 if other is agent or other.dummy: continue
@@ -367,12 +406,16 @@ class Scenario(BaseScenario):
                 comm.append(other.state.c)
                 if other.adversary:
                     other_pos.append((other.state.p_pos - agent.state.p_pos) * (1 - mask))
+                    adversary_pos = other.state.p_pos * (1 - mask)
                 else:
                     other_pos.append((other.state.p_pos - agent.state.p_pos))
+                    agent_pos_all.append(other.state.p_pos)
+                    agent_detect_state.append(other.detected)
                     other_vel.append(other.state.p_vel)
 
+            probability_grid = get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, world.world_step%world.world_length)
         # return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [self.adversaries(world)[0].init_pos])
+        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [self.adversaries(world)[0].init_pos] + [probability_grid])
     
     def info(self, agent, world):
         info = {'detect_times' : 0,
