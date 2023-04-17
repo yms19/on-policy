@@ -289,15 +289,15 @@ class Scenario(BaseScenario):
         #     rew += 5
 
         # agents are penalized for exiting the screen, so that they can be caught by the adversaries
-        # def bound(x):
-        #     if x < 1.9:
-        #         return 0
-        #     if x < 2:
-        #         return (x - 1.9) * 10
-        #     return min(np.exp(2 * x - 3.8), 10)
-        # for p in range(world.dim_p):
-        #     x = abs(agent.state.p_pos[p])
-        #     rew -= bound(x)
+        def bound(x):
+            if x < 1.9:
+                return 0
+            if x < 2:
+                return (x - 1.9) * 10
+            return min(np.exp(2 * x - 3.8), 10)
+        for p in range(world.dim_p):
+            x = abs(agent.state.p_pos[p])
+            rew -= bound(x)
             
         # def guide(x):
         #     if x < init_range:

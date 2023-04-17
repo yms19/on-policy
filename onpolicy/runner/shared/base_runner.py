@@ -1,19 +1,22 @@
+    
+import time
 import wandb
 import os
 import numpy as np
+from itertools import chain
 import torch
 from tensorboardX import SummaryWriter
 from onpolicy.utils.shared_buffer import SharedReplayBuffer
+from onpolicy.utils.util import update_linear_schedule
+# import socket
+# import psutil
+# import slackweb
+# webhook_url = " https://hooks.slack.com/services/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"
 
 def _t2n(x):
-    """Convert torch tensor to a numpy array."""
     return x.detach().cpu().numpy()
 
 class Runner(object):
-    """
-    Base class for training recurrent policies.
-    :param config: (dict) Config dictionary containing parameters for training.
-    """
     def __init__(self, config):
 
         self.all_args = config['all_args']
@@ -38,6 +41,7 @@ class Runner(object):
         self.use_linear_lr_decay = self.all_args.use_linear_lr_decay
         self.hidden_size = self.all_args.hidden_size
         self.use_wandb = self.all_args.use_wandb
+        self.use_single_network = self.all_args.use_single_network
         self.use_render = self.all_args.use_render
         self.recurrent_N = self.all_args.recurrent_N
 
@@ -51,7 +55,6 @@ class Runner(object):
         self.model_dir = self.all_args.model_dir
 
         if self.use_render:
-            import imageio
             self.run_dir = config["run_dir"]
             self.gif_dir = str(self.run_dir / 'gifs')
             if not os.path.exists(self.gif_dir):
@@ -69,55 +72,63 @@ class Runner(object):
                 self.save_dir = str(self.run_dir / 'models')
                 if not os.path.exists(self.save_dir):
                     os.makedirs(self.save_dir)
-
-        from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
-        from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
-
+        
+        if "mappo" in self.algorithm_name:
+            if self.use_single_network:
+                from onpolicy.algorithms.r_mappo_single.r_mappo_single import R_MAPPO as TrainAlgo
+                from onpolicy.algorithms.r_mappo_single.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+            else:
+                from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
+                from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
+        # elif "mappg" in self.algorithm_name:
+        #     if self.use_single_network:
+        #         from onpolicy.algorithms.r_mappg_single.r_mappg_single import R_MAPPG as TrainAlgo
+        #         from onpolicy.algorithms.r_mappg_single.algorithm.rMAPPGPolicy import R_MAPPGPolicy as Policy
+        #     else:
+        #         from onpolicy.algorithms.r_mappg.r_mappg import R_MAPPG as TrainAlgo
+        #         from onpolicy.algorithms.r_mappg.algorithm.rMAPPGPolicy import R_MAPPGPolicy as Policy
+        elif "ft" in self.algorithm_name:
+            print("use frontier-based algorithm")
+        else:
+            raise NotImplementedError
+        
         share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
 
-        # policy network
-        self.policy = Policy(self.all_args,
-                            self.envs.observation_space[0],
-                            share_observation_space,
-                            self.envs.action_space[0],
-                            device = self.device)
+        if "ft" not in self.algorithm_name:
+            # policy network
+            self.policy = Policy(self.all_args,
+                                self.envs.observation_space[0],
+                                share_observation_space,
+                                self.envs.action_space[0],
+                                device = self.device)
 
-        if self.model_dir is not None:
-            self.restore()
-            print("restore model")
+            if self.model_dir is not None:
+                self.restore()
 
-        # algorithm
-        self.trainer = TrainAlgo(self.all_args, self.policy, device = self.device)
+            # algorithm
+            self.trainer = TrainAlgo(self.all_args, self.policy, device = self.device)
         
-        # buffer
-        self.buffer = SharedReplayBuffer(self.all_args,
+            # buffer
+            self.buffer = SharedReplayBuffer(self.all_args,
                                         self.num_agents,
                                         self.envs.observation_space[0],
                                         share_observation_space,
                                         self.envs.action_space[0])
 
     def run(self):
-        """Collect training data, perform training updates, and evaluate policy."""
         raise NotImplementedError
 
     def warmup(self):
-        """Collect warmup pre-training data."""
         raise NotImplementedError
 
     def collect(self, step):
-        """Collect rollouts for training."""
         raise NotImplementedError
 
     def insert(self, data):
-        """
-        Insert data into buffer.
-        :param data: (Tuple) data to insert into training buffer.
-        """
         raise NotImplementedError
     
     @torch.no_grad()
     def compute(self):
-        """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
         next_values = self.trainer.policy.get_values(np.concatenate(self.buffer.share_obs[-1]),
                                                 np.concatenate(self.buffer.rnn_states_critic[-1]),
@@ -126,33 +137,34 @@ class Runner(object):
         self.buffer.compute_returns(next_values, self.trainer.value_normalizer)
     
     def train(self):
-        """Train policies with data in buffer. """
         self.trainer.prep_training()
         train_infos = self.trainer.train(self.buffer)      
         self.buffer.after_update()
+        # self.log_system()
         return train_infos
 
     def save(self):
-        """Save policy's actor and critic networks."""
-        policy_actor = self.trainer.policy.actor
-        torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
-        policy_critic = self.trainer.policy.critic
-        torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
+        if self.use_single_network:
+            policy_model = self.trainer.policy.model
+            torch.save(policy_model.state_dict(), str(self.save_dir) + "/model.pt")
+        else:
+            policy_actor = self.trainer.policy.actor
+            torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor.pt")
+            policy_critic = self.trainer.policy.critic
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic.pt")
 
     def restore(self):
-        """Restore policy's networks from a saved model."""
-        policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor.pt')
-        self.policy.actor.load_state_dict(policy_actor_state_dict)
-        if not self.all_args.use_render:
-            policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic.pt')
-            self.policy.critic.load_state_dict(policy_critic_state_dict)
+        if self.use_single_network:
+            policy_model_state_dict = torch.load(str(self.model_dir) + '/model.pt', map_location=self.device)
+            self.policy.model.load_state_dict(policy_model_state_dict)
+        else:
+            policy_actor_state_dict = torch.load(str(self.model_dir) + '/actor.pt', map_location=self.device)
+            self.policy.actor.load_state_dict(policy_actor_state_dict)
+            if not (self.all_args.use_render or self.all_args.use_eval):
+                policy_critic_state_dict = torch.load(str(self.model_dir) + '/critic.pt', map_location=self.device)
+                self.policy.critic.load_state_dict(policy_critic_state_dict)
  
     def log_train(self, train_infos, total_num_steps):
-        """
-        Log training info.
-        :param train_infos: (dict) information about training update.
-        :param total_num_steps: (int) total number of training env steps.
-        """
         for k, v in train_infos.items():
             if self.use_wandb:
                 wandb.log({k: v}, step=total_num_steps)
@@ -160,14 +172,19 @@ class Runner(object):
                 self.writter.add_scalars(k, {k: v}, total_num_steps)
 
     def log_env(self, env_infos, total_num_steps):
-        """
-        Log env info.
-        :param env_infos: (dict) information about env state.
-        :param total_num_steps: (int) total number of training env steps.
-        """
         for k, v in env_infos.items():
-            if len(v)>0:
+            if len(v) > 0:
                 if self.use_wandb:
                     wandb.log({k: np.mean(v)}, step=total_num_steps)
                 else:
                     self.writter.add_scalars(k, {k: np.mean(v)}, total_num_steps)
+
+    # def log_system(self):
+    #     # RRAM
+    #     mem = psutil.virtual_memory()
+    #     total_mem = float(mem.total) / 1024 / 1024 / 1024
+    #     used_mem = float(mem.used) / 1024 / 1024 / 1024
+    #     if used_mem/total_mem > 0.95:
+    #         slack = slackweb.Slack(url=webhook_url)
+    #         host_name = socket.gethostname()
+    #         slack.notify(text="Host {}: occupied memory is *{:.2f}*%!".format(host_name, used_mem/total_mem*100))

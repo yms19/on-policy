@@ -121,7 +121,7 @@ def get_config():
         --clone_coef <float>
             clone term coefficient (default: 0.01)
     
-    Run parameters：
+    Run parameters:
         --use_linear_lr_decay
             by default, do not apply linear decay to learning rate. If set, use a linear schedule on the learning rate
     
@@ -193,6 +193,8 @@ def get_config():
                         default=True, help='Whether agent share the same policy')
     parser.add_argument("--use_centralized_V", action='store_false',
                         default=True, help="Whether to use centralized V function")
+    parser.add_argument("--use_conv1d", action='store_true',
+                        default=False, help="Whether to use conv1d")
     parser.add_argument("--stacked_frames", type=int, default=1,
                         help="Dimension of hidden layers for actor/critic networks")
     parser.add_argument("--use_stacked_frames", action='store_true',
@@ -201,6 +203,8 @@ def get_config():
                         help="Dimension of hidden layers for actor/critic networks") 
     parser.add_argument("--layer_N", type=int, default=1,
                         help="Number of layers for actor/critic networks")
+    parser.add_argument("--activation_id", type=int,
+                        default=1, help="choose 0 to use tanh, 1 to use relu, 2 to use leaky relu, 3 to use elu")
     parser.add_argument("--use_ReLU", action='store_false',
                         default=True, help="Whether to use ReLU")
     parser.add_argument("--use_popart", action='store_true', default=False, help="by default False, use PopArt to normalize rewards.")
@@ -220,6 +224,17 @@ def get_config():
     parser.add_argument("--recurrent_N", type=int, default=1, help="The number of recurrent layers.")
     parser.add_argument("--data_chunk_length", type=int, default=10,
                         help="Time length of chunks used to train a recurrent_policy")
+    
+    # attn parameters
+    parser.add_argument("--use_attn", action='store_true', default=False, help=" by default False, use attention tactics.")
+    parser.add_argument("--attn_N", type=int, default=1, help="the number of attn layers, by default 1")
+    parser.add_argument("--attn_size", type=int, default=64, help="by default, the hidden size of attn layer")
+    parser.add_argument("--attn_heads", type=int, default=4, help="by default, the # of multiply heads")
+    parser.add_argument("--dropout", type=float, default=0.0, help="by default 0, the dropout ratio of attn layer.")
+    parser.add_argument("--use_average_pool",
+                        action='store_false', default=True, help="by default True, use average pooling for attn model.")
+    parser.add_argument("--use_attn_internal", action='store_false', default=True, help="by default True, whether to strengthen own characteristics")
+    parser.add_argument("--use_cat_self", action='store_false', default=True, help="by default True, whether to strengthen own characteristics")
 
     # optimizer parameters
     parser.add_argument("--lr", type=float, default=5e-4,
@@ -262,6 +277,9 @@ def get_config():
                         action='store_false', default=True, help="by default True, whether to mask useless data in policy loss.")
     parser.add_argument("--huber_delta", type=float, default=10.0, help=" coefficience of huber loss.")
 
+    # ppg parameters
+    parser.add_argument("--use_single_network", action='store_true',
+                    default=False, help="Whether to use centralized V function")
     # run parameters
     parser.add_argument("--use_linear_lr_decay", action='store_true',
                         default=False, help='use a linear schedule on the learning rate')

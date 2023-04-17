@@ -14,7 +14,7 @@ seed_max=1
 echo "env is ${env}"
 for seed in `seq ${seed_max}`
 do
-    CUDA_VISIBLE_DEVICES=3 python render/render_mpe.py --use_ReLU --save_gifs \
+    CUDA_VISIBLE_DEVICES=3 python render/render_mpe.py --use_ReLU --activation_id 0 --save_gifs \
     --env_name ${env} --algorithm_name ${algo} --experiment_name ${exp} --scenario_name ${scenario} \
     --num_good_agents ${num_good_agents} --num_adversaries ${num_adversaries} --num_bubbles ${num_bubbles} --d_range ${d_range} \
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 1 \
