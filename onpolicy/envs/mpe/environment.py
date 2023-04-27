@@ -23,6 +23,8 @@ class MultiAgentEnv(gym.Env):
 
         self.world = world
         self.world_length = self.world.world_length
+        self.script_length = self.world.script_length
+        self.inference_interval = self.world.inference_interval
         self.current_step = 0
         self.agents = self.world.policy_agents
         # set required vectorized gym env property
@@ -90,6 +92,8 @@ class MultiAgentEnv(gym.Env):
                 self.action_space.append(act_space)
             else:
                 self.action_space.append(total_action_space[0])
+
+            self.inference_action_space = [MultiDiscrete([[0, 1], [0, 1], [0, 6], [0, 5]])] # [右左，上下， 右左格数， 上下格数]
             
             # observation space
             obs_dim = len(observation_callback(agent, self.world))
@@ -115,10 +119,71 @@ class MultiAgentEnv(gym.Env):
         else:
             np.random.seed(seed)
 
+    def _set_target_pos(self, agent, action_one):
+        current_pos = agent.state.p_pos
+        current_grid = [int(current_pos[0] // 0.25), int(current_pos[1] // 0.25)]
+        target_pos = np.zeros((2))
+        if action_one[0] == 0: #向右
+            target_pos[0] = (min(current_grid[0] + action_one[2], 6) + 0.5) * 0.25
+        else: # 向左
+            target_pos[0] = (max(current_grid[0] - action_one[2], 0) + 0.5) * 0.25
+
+        if action_one[1] == 0: #向上
+            target_pos[1] = (min(current_grid[1] + action_one[3], 5) + 0.5) * 0.25
+        else: # 向下
+            target_pos[1] = (max(current_grid[1] - action_one[3], 0) + 0.5) * 0.25
+        
+        agent.target_pos = target_pos
+
+    def _action_wrapper(self, agent, action_one):
+        """
+        输入: action_one: [右左，上下， 右左格数， 上下格数]
+        输出: action_env: [静止, 右, 左, 上, 下, 开始探测, 结束探测]
+        """
+        if (self.current_step-self.script_length-1) % self.inference_interval == 0:
+            self._set_target_pos(agent, action_one)
+        
+        detect_threshold = 0.02
+        target_pos = agent.target_pos - agent.state.p_pos
+        action_env = np.zeros(7)
+        if agent.detected:
+            if agent.dtime < 180:
+                action_env[5]=1
+            else:
+                action_env[6]=1
+        elif np.sqrt(np.sum(np.square(target_pos))) < detect_threshold:
+            action_env[5]=1
+        elif abs(target_pos[0]) > abs(target_pos[1]):
+            i = 1 if target_pos[0] > 0 else 2 
+            action_env[i]=1
+        else:
+            i = 3 if target_pos[1] > 0 else 4 
+            action_env[i]=1
+    
+        return action_env
+
+    def _adv_action_wrapper(self, agent, action_one):
+        """
+        输入: action_one: 四维动作 [右, 左, 上, 下]
+        输出: action_env: 七维动作 [静止, 右, 左, 上, 下, 开始探测, 结束探测]
+        """
+        action_env = np.zeros(7)
+        action_env[1:5] = action_one
+    
+        return action_env
+    
     # step  this is  env.step()
-    def step(self, action_n):
+    def step(self, action_n): # action_n:{'adv': [...], 'good': [...]}
         self.current_step += 1
-        # print("environment step is {}".format(self.current_step))
+        action_n_env = []
+        if self.current_step <= self.script_length:
+            action_n_env = action_n
+        else:
+            for i, agent in enumerate(self.agents):
+                if agent.adversary:
+                    action_n_env.append(self._adv_action_wrapper(agent, action_n[i]))
+                else:
+                    action_n_env.append(self._action_wrapper(agent, action_n[i]))
         obs_n = []
         reward_n = []
         done_n = []
@@ -127,8 +192,8 @@ class MultiAgentEnv(gym.Env):
         self.agents = self.world.policy_agents
         # set action for each agent
         for i, agent in enumerate(self.agents):
-            self._set_action(action_n[i], agent, self.action_space[i])
-            avail_n.append(self._set_available_action(agent, self.action_space[i]))
+            self._set_action(action_n_env[i], agent, self.action_space[i])
+            avail_n.append(self._set_available_action(agent))
         # advance world state
         self.world.step()  # core.step()
         # record observation for each agent
@@ -168,7 +233,7 @@ class MultiAgentEnv(gym.Env):
 
         for agent in self.agents:
             obs_n.append(self._get_obs(agent))
-            avail = self._set_available_action(agent, self.action_space[0])
+            avail = self._set_available_action(agent)
             avail_n.append(avail)
             
         return obs_n, avail_n
@@ -273,8 +338,8 @@ class MultiAgentEnv(gym.Env):
         # make sure we used all elements of action
         assert len(action) == 0
     
-    def _set_available_action(self, agent, action_space):
-        avail_action = np.ones((action_space.n))
+    def _set_available_action(self, agent):
+        avail_action = np.ones(7)
         if self.current_step < 0:
             avail_action[5] = 0
         if agent.detected:
@@ -370,7 +435,7 @@ class MultiAgentEnv(gym.Env):
                         entity_comm_geoms.append(comm)
                     
                     if entity.adversary:
-                        possible_range = "circular"
+                        possible_range = "fan"
                         if possible_range == "fan":
                             guess_center = entity.init_pos
                             init_range = 0.5

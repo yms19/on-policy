@@ -111,37 +111,23 @@ def in_range(left, right, up, down, pos):
 
 def get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, step):    
     possible_grid_count = 0
-    probability_grid = np.zeros((20, 30))
+    probability_grid = np.zeros((7, 6))
     if np.any(adversary_pos): # 有一个智能体探测到了敌方：只有敌方所在格点置1
-        row = int(adversary_pos[0] // 0.07)
-        col = int(adversary_pos[1] // 0.07)
+        row = int(adversary_pos[0] // 0.25)
+        col = int(adversary_pos[1] // 0.25)
         probability_grid[row, col] = 1
     else:   # 没有智能体探测到敌方：将所有正在进行探测的智能体探测范围内概率置0
-        start_row = 3 - step // 112
-        end_row = 14 + step // 112
-        start_col = 3 - step // 112
-        end_col = 16 + step // 112  
-        possible_grid_count = (end_row - start_row + 1) * (end_col - start_col + 1)      
-        zero_index = []
         detect_agent_index = np.where(agent_detect_state)[0] # 正在执行探测的智能体编号
-        
+        possible_grid_count = 42 - len(detect_agent_index) # (end_row - start_row + 1) * (end_col - start_col + 1)  
+        probability_grid[:, :] = 1 / possible_grid_count
+
         for index in detect_agent_index:
             agent_pos = agent_pos_all[index]
-            agent_row = int(agent_pos[0] // 0.07)
-            agent_col = int(agent_pos[1] // 0.07)
-            agent_start_row = max(agent_row - 2, start_row)
-            agent_end_row = min(agent_row + 2, end_row)
-            agent_start_col = max(agent_col - 2, start_col)
-            agent_end_col = min(agent_col + 2, end_col)
-            possible_grid_count -= (agent_end_row - agent_start_row + 1) * (agent_end_col - agent_start_col + 1)
-            zero_index.append([agent_start_row, agent_end_row, agent_start_col, agent_end_col])
+            agent_row = int(agent_pos[0] // 0.25)
+            agent_col = int(agent_pos[1] // 0.25)
+            probability_grid[agent_row, agent_col] = 0
         
-        probability_grid[start_row:end_row+1, start_col:end_col+1] = 1 / possible_grid_count
-        for index in zero_index:
-            probability_grid[index[0]:index[1]+1, index[2]:index[3]+1] = 0
-        
-    return probability_grid.reshape((20*30)).tolist()
-
+    return probability_grid.reshape((7*6)).tolist()
 
 class Scenario(BaseScenario):
     def make_world(self, args):
@@ -157,7 +143,9 @@ class Scenario(BaseScenario):
         num_landmarks = args.num_landmarks#2
         # add agents
         world.agents = [Agent() for i in range(num_agents)]
-        world.world_length = args.episode_length+args.script_length
+        world.world_length = args.world_length
+        world.script_length = args.world_length - args.episode_length * args.inference_interval
+        world.inference_interval = args.inference_interval
         # init_angle = adversary_init_angle(270, 360)
         init_angle = 0
         # print("init_angle:", init_angle *180/math.pi)
@@ -398,7 +386,7 @@ class Scenario(BaseScenario):
                 if not other.adversary:
                     other_vel.append((other.state.p_vel) * (1 - mask))
             other_vel = other_vel[:-1]
-            probability_grid = np.zeros((20*30)).tolist()
+            probability_grid = np.zeros((7*6)).tolist()
         else:
             for other in world.agents:
                 if other is agent or other.dummy: continue
@@ -414,8 +402,10 @@ class Scenario(BaseScenario):
                     other_vel.append(other.state.p_vel)
 
             probability_grid = get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, world.world_step%world.world_length)
+        detected = 1 if agent.detected else 0
         # return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [self.adversaries(world)[0].init_pos] + [probability_grid])
+        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [np.array([detected])] \
+                              + [self.adversaries(world)[0].init_pos] + [probability_grid])
     
     def info(self, agent, world):
         info = {'detect_times' : 0,

@@ -11,7 +11,58 @@ import pdb
 def _t2n(x):
     return x.detach().cpu().numpy()
 
-def get_adv_action(num_agents, adv_strategy, obs, init_direction):
+def get_adv_action_dim4(num_agents, adv_strategy, obs, init_direction):
+    action_env = np.zeros(4)
+    if adv_strategy == 'random':
+        action_env[np.random.randint(4)]=1
+    elif adv_strategy == 'escape_nearest':
+        dists = []
+        for i in range(num_agents):
+            if obs[4+2*i]==0 and obs[5+2*i]==0:
+                dist = 100 # mask
+            else:
+                dist = np.sqrt(np.sum(np.square([obs[4+2*i], obs[5+2*i]])))
+            dists.append(dist)
+        nearest_index = np.argmin(np.array(dists))
+        if dists[nearest_index] == 100: # all good agents' position are masked
+            action_env[init_direction]=1
+        else:
+            if abs(obs[4+2*nearest_index]) > abs(obs[5+2*nearest_index]):
+                i = 0 if obs[4+2*nearest_index] < 0 else 1 
+                action_env[i]=1
+            else:
+                i = 2 if obs[5+2*nearest_index] < 0 else 3
+                action_env[i]=1 
+
+    elif adv_strategy == 'escape_group':
+        dists = []
+        for i in range(num_agents):
+            if obs[4+2*i]==0 and obs[5+2*i]==0:
+                dist = 100 # mask
+            else:
+                dist = np.sqrt(np.sum(np.square([obs[4+2*i], obs[5+2*i]])))
+            dists.append(dist)
+        if min(dists) == 100:
+            action_env[init_direction]=1
+        else:
+            dists_reciprocal = [1/x for x in dists]
+            dists_reciprocal_sum = np.sqrt(np.sum(np.square(dists_reciprocal)))
+            dists_reciprocal_norm = [x/dists_reciprocal_sum for x in dists_reciprocal]
+            for index in range(num_agents):
+                if abs(obs[4+2*index]) > abs(obs[5+2*index]):
+                    i = 0 if obs[4+2*index] < 0 else 1
+                    action_env[i]+=1*dists_reciprocal_norm[index]
+                else:
+                    i = 2 if obs[5+2*index] < 0 else 3
+                    action_env[i]+=1*dists_reciprocal_norm[index]
+    elif adv_strategy == "stop":
+        pass
+    else:
+        raise NotImplementedError("Unknown Strategy!")
+
+    return action_env
+
+def get_adv_action_dim7(num_agents, adv_strategy, obs, init_direction):
     action_env = np.zeros(7)
     if adv_strategy == 'random':
         action_env[np.random.randint(5)]=1
@@ -25,7 +76,7 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
             dists.append(dist)
         nearest_index = np.argmin(np.array(dists))
         if dists[nearest_index] == 100: # all good agents' position are masked
-            action_env[init_direction]=1
+            action_env[init_direction+1]=1
         else:
             if abs(obs[4+2*nearest_index]) > abs(obs[5+2*nearest_index]):
                 i = 1 if obs[4+2*nearest_index] < 0 else 2 
@@ -50,7 +101,7 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
             dists_reciprocal_norm = [x/dists_reciprocal_sum for x in dists_reciprocal]
             for index in range(num_agents):
                 if abs(obs[4+2*index]) > abs(obs[5+2*index]):
-                    i = 1 if obs[4+2*index] < 0 else 2 
+                    i = 1 if obs[4+2*index] < 0 else 2
                     action_env[i]+=1*dists_reciprocal_norm[index]
                 else:
                     i = 3 if obs[5+2*index] < 0 else 4
@@ -63,7 +114,7 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
     return action_env
 
 # old version
-def get_good_action(num_agents, obs, agent_id, step, avail_action):
+def get_good_action(num_agents, obs, agent_id, step):
     adv_x = 4
     adv_y = 5
     init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
@@ -171,12 +222,14 @@ class MPERunner(Runner):
     def __init__(self, config):
         super(MPERunner, self).__init__(config)
         self.adv_obs = np.zeros((self.all_args.n_rollout_threads, 1, *self.envs.observation_space[0].shape))
-        self.script_length = self.all_args.script_length
+        self.inference_interval = self.all_args.inference_interval
+        self.world_length = self.all_args.world_length
+        self.script_length = self.all_args.world_length - self.all_args.episode_length * self.all_args.inference_interval
 
     def run(self):
         self.warmup()
         obs = self.buffer.obs[0]
-        available_actions = self.buffer.available_actions[0] 
+        # available_actions = self.buffer.available_actions[0] 
 
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
@@ -185,34 +238,46 @@ class MPERunner(Runner):
         adv_strategy = 'escape_nearest'
 
         for episode in range(episodes):
-            init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
+            init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads))
+            accu_rewards = np.zeros((self.n_rollout_threads, self.num_agents+1, 1))
             win = np.zeros((self.n_rollout_threads))
             win_step = np.zeros((self.n_rollout_threads))
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)            
                 
-            for step in range(self.episode_length+self.script_length):
+            for step in range(self.world_length):
                 # Sample actions
                 if step < self.script_length:
                     actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
+                    actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 7])
+                    actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                     for thread_index in range(self.all_args.n_rollout_threads):
                         for agent_index in range(self.num_agents):
-                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step, available_actions[thread_index][agent_index-self.num_agents])
+                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step)
+                        actions_env_adv[thread_index] = get_adv_action_dim7(self.all_args.num_agents, adv_strategy,
+                                                                self.adv_obs[thread_index], init_direction[thread_index])
+                    actions_env_all = np.concatenate([actions_env_adv, actions_env], axis=1)
                             # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
                     # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
-                    values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length)
-
-                actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
-
-                for thread_index in range(self.all_args.n_rollout_threads):                    
-                    actions_env_adv = get_adv_action(self.all_args.num_agents, adv_strategy,
+                    actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
+                    actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
+                    for thread_index in range(self.all_args.n_rollout_threads):                    
+                        actions_env_adv[thread_index] = get_adv_action_dim4(self.all_args.num_agents, adv_strategy,
                                                                 self.adv_obs[thread_index], init_direction[thread_index])
-                    actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
+                        
+                    if (step-self.script_length) % self.inference_interval == 0:
+                        step_inference = (step-self.script_length) // self.inference_interval
+                        values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step_inference)
+                        accu_rewards = accu_rewards*0
+
+                    actions_env_all = np.concatenate([actions_env_adv, actions], axis=1)
                 # pdb.set_trace()
                     
                 # Obser reward and next obs
+                # print("step%d action"%step, actions_env_all[0][1], actions_env_all[0][2], actions_env_all[0][3], actions_env_all[0][4])
                 obs, rewards, dones, infos, available_actions = self.envs.step(actions_env_all)
+                accu_rewards += rewards
                 self.adv_obs = obs[:, 0, :].copy()
 
                 if step == self.script_length - 1:
@@ -225,7 +290,7 @@ class MPERunner(Runner):
 
                     self.buffer.share_obs[0] = share_obs.copy()
                     self.buffer.obs[0] = obs[:, 1:, :].copy()
-                    self.buffer.available_actions[0] = available_actions[:, 1:, :].copy()
+                    # self.buffer.available_actions[0] = available_actions[:, 1:, :].copy()
 
                 for thread_index in range(self.all_args.n_rollout_threads):
                     for agent_index in range(self.num_agents):
@@ -240,8 +305,8 @@ class MPERunner(Runner):
                 #     print("eval average episode rewards of agent%i: " % i + str(rewards[:, :,]))
 
                 # print("step%d obs"%step, obs[0][1],obs[0][2],obs[0][3],obs[0][3])
-                if step >= self.script_length:
-                    data = obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic
+                if step >= self.script_length and ((step-self.script_length) % self.inference_interval == (self.inference_interval - 1)):
+                    data = obs, accu_rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic
 
                     # insert data into buffer
                     self.insert(data)
@@ -320,7 +385,7 @@ class MPERunner(Runner):
         available_actions = available_actions[:, 1:, :]
         self.buffer.share_obs[0] = share_obs.copy()
         self.buffer.obs[0] = obs.copy()
-        self.buffer.available_actions[0] = available_actions.copy()
+        # self.buffer.available_actions[0] = available_actions.copy()
 
     @torch.no_grad()
     def collect(self, step):
@@ -330,8 +395,7 @@ class MPERunner(Runner):
                             np.concatenate(self.buffer.obs[step]),
                             np.concatenate(self.buffer.rnn_states[step]),
                             np.concatenate(self.buffer.rnn_states_critic[step]),
-                            np.concatenate(self.buffer.masks[step]),
-                            np.concatenate(self.buffer.available_actions[step]),
+                            np.concatenate(self.buffer.masks[step])
                             )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
@@ -372,7 +436,7 @@ class MPERunner(Runner):
         #     share_obs = obs
         share_obs = _get_attn_share_obs(obs)[:, 1:, :]
 
-        self.buffer.insert(share_obs, obs[:, 1:, :], rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks, available_actions=available_actions[:, 1:, :])
+        self.buffer.insert(share_obs, obs[:, 1:, :], rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks)
 
     @torch.no_grad()
     def eval(self, total_num_steps):
@@ -457,7 +521,7 @@ class MPERunner(Runner):
             
             episode_rewards = []
             
-            for step in range(self.episode_length+self.script_length):
+            for step in range(self.world_length):
                 calc_start = time.time()
                 adv_strategy = 'escape_group'
                 mode = "scripts"
@@ -466,37 +530,43 @@ class MPERunner(Runner):
                 if self.all_args.model_dir is not None:
                     if step < self.script_length:
                         actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
+                        actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 7])
+                        actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
                         for thread_index in range(self.all_args.n_rollout_threads):
                             for agent_index in range(self.num_agents):
-                                actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
+                                actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step)
+                            actions_env_adv[thread_index] = get_adv_action_dim7(self.all_args.num_agents, adv_strategy,
+                                                                    self.adv_obs[thread_index], init_direction[thread_index])
+                        actions_env_all = np.concatenate([actions_env_adv, actions_env], axis=1)
                                 # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
                         # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                     else:
                         self.trainer.prep_rollout()
-                        action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
+                        actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
+                        actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
+                        if (step-self.script_length) % self.inference_interval == 0:
+                            action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
                                                             np.concatenate(rnn_states),
                                                             np.concatenate(masks),
-                                                            np.concatenate(avail_actions),
                                                             deterministic=True)
-                        actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
-                        rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
-                        if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
-                            for i in range(envs.action_space[0].shape):
-                                uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
-                                if i == 0:
-                                    actions_env = uc_actions_env
-                                else:
-                                    actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
-                        elif envs.action_space[0].__class__.__name__ == 'Discrete':
-                            actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
-                        else:
-                            raise NotImplementedError
+                            actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
+                            rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+                            if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
+                                for i in range(envs.action_space[0].shape):
+                                    uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
+                                    if i == 0:
+                                        actions_env = uc_actions_env
+                                    else:
+                                        actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+                            elif envs.action_space[0].__class__.__name__ == 'Discrete':
+                                actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
+                            else:
+                                raise NotImplementedError
 
-                    actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
+                        print(actions)
+                        actions_env_all = np.concatenate([actions_env_adv, actions], axis=1)
+
                     for thread_index in range(self.all_args.n_rollout_threads):                    
-                        actions_env_adv = get_adv_action(self.all_args.num_agents, adv_strategy,
-                                                                    self.adv_obs[thread_index], init_direction[thread_index])
-                        actions_env_all[thread_index] = np.concatenate([[actions_env_adv], actions_env[thread_index]])
                         vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
                         vels.append(vel)
                         for agent_index in range(self.num_agents):
@@ -508,7 +578,7 @@ class MPERunner(Runner):
                 else:
                     actions_env_all = np.zeros(shape=(self.n_rollout_threads, self.num_agents+1, 7))
                     for thread_index in range(self.n_rollout_threads):
-                        adv_action = get_adv_action(self.num_agents, adv_strategy, self.adv_obs[thread_index],  init_direction[thread_index])
+                        adv_action = get_adv_action_dim7(self.num_agents, adv_strategy, self.adv_obs[thread_index],  init_direction[thread_index])
                         actions_env_all[thread_index][0] = adv_action
                         vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
                         vels.append(vel)

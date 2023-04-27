@@ -47,8 +47,10 @@ def parse_args(args, parser):
                         default=2, help="number of adversaries")
     parser.add_argument('--d_range', type=float,
                         default=1, help="detection range of players")
-    parser.add_argument('--script_length', type=int,
-                        default=30, help="number of steps which script controls")
+    parser.add_argument('--world_length', type=int,
+                        default=0, help="Max length for environment")
+    parser.add_argument('--inference_interval', type=int,
+                        default=0, help="time duration between contiunous twice inference")
 
     all_args = parser.parse_known_args(args)[0]
 
