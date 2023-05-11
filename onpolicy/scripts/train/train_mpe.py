@@ -61,6 +61,8 @@ def parse_args(args, parser):
                         default=1, help="number of adversaries")
     parser.add_argument('--d_range', type=float,
                         default=1, help="detection range of players")
+    parser.add_argument('--adversary_speed', type=float,
+                        default=0.0003, help="the speed of adversary")
     parser.add_argument('--num_bubbles', type=int,
                         default=0, help="number of bubbies")
     parser.add_argument('--script_length', type=int,
@@ -111,7 +113,8 @@ def main(args):
                          entity=all_args.user_name,
                          notes=socket.gethostname(),
                          name=str(all_args.algorithm_name) + "_" +
-                         str(all_args.experiment_name) +
+                         str(all_args.experiment_name) + 
+                         "_agents" + str(all_args.num_good_agents) + 
                          "_seed" + str(all_args.seed),
                          group=all_args.scenario_name,
                          dir=str(run_dir),

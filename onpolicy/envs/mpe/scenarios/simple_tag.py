@@ -139,7 +139,7 @@ class Scenario(BaseScenario):
             agent.size = 0.025 if agent.adversary else 0.015 if not agent.dummy else 0.005
             agent.accel = 0.006 if agent.adversary else 0.1 # if not agent.dummy else 5.0
             #agent.accel = 20.0 if agent.adversary else 25.0
-            agent.max_speed = 0.0003 if agent.adversary else 0.004 # if not agent.dummy else 1.5
+            agent.max_speed = args.adversary_speed if agent.adversary else 0.004 # if not agent.dummy else 1.5
             agent.d_range = 2 * args.d_range if agent.adversary else args.d_range if not agent.dummy else None
             agent.action_callback = hit if agent.dummy else None
             agent.holder = world.agents[i-num_good_agents] if agent.dummy else None
@@ -378,10 +378,12 @@ class Scenario(BaseScenario):
         info = {'detect_times' : 0,
                 'detect_adversary' : False}
         info['detect_times'] = agent.dcount
+        info['detect_adversary'] = False
         if not agent.adversary:
             info['detect_adversary'] = agent.detected and self.is_detected(agent, world.agents[0])
         else:
-            info['detect_adversary'] = self.is_detected(agent, world.agents[1]) or self.is_detected(agent, world.agents[2]) \
-                                        or self.is_detected(agent, world.agents[3]) or self.is_detected(agent, world.agents[4])
-        
+            for good_agent in world.agents[1:]:
+                if self.is_detected(agent, good_agent):
+                    info['detect_adversary'] = True
+                    break        
         return info
