@@ -167,7 +167,7 @@ class Scenario(BaseScenario):
         world.assign_landmark_colors()
         # random properties for landmarks
         # set random initial states
-        init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55]]
+        init_pos = [[-1.05, 0.5], [-0.95, 0.5], [-1, 0.45], [-1, 0.55], [-1, 0.5]]
         init_pos_adv = [-1, 0.5]
         init_dis = 1.5
         # init_angle = adversary_init_angle(270, 360)

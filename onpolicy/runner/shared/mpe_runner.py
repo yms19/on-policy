@@ -66,7 +66,7 @@ def get_adv_action(num_agents, adv_strategy, obs, init_direction):
 def get_good_action(num_agents, obs, agent_id, step, avail_action):
     adv_x = 4
     adv_y = 5
-    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
+    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05], [0, 0]]
     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
     target_pos = [[obs[2+num_agents*4], obs[3+num_agents*4]]] * num_agents
     action_env = np.zeros(shape=(1, 7))
@@ -89,10 +89,10 @@ def get_good_action(num_agents, obs, agent_id, step, avail_action):
 def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
     adv_x = 4
     adv_y = 5
-    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
-    adv_center = [obs[2+num_agents*4], obs[3+num_agents*2]]
-    target_pos1 = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3]]
-    target_pos2 = [[adv_center[0]-0.2, adv_center[1]], [adv_center[0]+0.17, adv_center[1]+0.57], [adv_center[0]+0.7, adv_center[1]-0.1], [adv_center[0]+0.7, adv_center[1]+0.3]]
+    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05], [0, 0]]
+    adv_center = [obs[2+num_agents*4], obs[3+num_agents*4]]
+    target_pos1 = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3], [adv_center[0], adv_center[1]]]
+    target_pos2 = [[adv_center[0]-0.2, adv_center[1]], [adv_center[0]+0.17, adv_center[1]+0.57], [adv_center[0]+0.7, adv_center[1]-0.1], [adv_center[0]+0.7, adv_center[1]+0.3], [adv_center[0], adv_center[1]]]
     action_env = np.zeros(shape=(1, 7))
     if obs[adv_x] == 0 and obs[adv_y] == 0 :
         if step < 173:
