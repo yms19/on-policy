@@ -44,9 +44,17 @@ def parse_args(args, parser):
     parser.add_argument('--num_adversaries', type=int,
                         default=1, help="number of adversaries")
     parser.add_argument('--num_bubbles', type=int,
-                        default=2, help="number of adversaries")
+                        default=0, help="number of adversaries")
     parser.add_argument('--d_range', type=float,
                         default=1, help="detection range of players")
+    parser.add_argument('--adversary_speed', type=float,
+                        default=1, help="speed of adversary")
+    parser.add_argument('--init_radius', type=float,
+                        default=0.5, help="initial range radius of adversary")
+    parser.add_argument('--init_angle', type=float,
+                        default=45, help="initial range angle of adversary")
+    parser.add_argument('--detect_noise', type=float,
+                        default=0, help="the standard deviation of noise that add to the observation of other agents' positions")
     parser.add_argument('--world_length', type=int,
                         default=0, help="Max length for environment")
     parser.add_argument('--inference_interval', type=int,

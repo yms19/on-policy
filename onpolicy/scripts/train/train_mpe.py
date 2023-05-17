@@ -61,6 +61,14 @@ def parse_args(args, parser):
                         default=1, help="number of adversaries")
     parser.add_argument('--d_range', type=float,
                         default=1, help="detection range of players")
+    parser.add_argument('--adversary_speed', type=float,
+                        default=1, help="speed of adversary")
+    parser.add_argument('--init_radius', type=float,
+                        default=0.5, help="initial range radius of adversary")
+    parser.add_argument('--init_angle', type=float,
+                        default=45, help="initial range angle of adversary")
+    parser.add_argument('--detect_noise', type=float,
+                        default=0, help="the standard deviation of noise that add to the observation of other agents' positions")
     parser.add_argument('--num_bubbles', type=int,
                         default=0, help="number of bubbies")
     parser.add_argument('--world_length', type=int,
@@ -113,6 +121,7 @@ def main(args):
                          notes=socket.gethostname(),
                          name=str(all_args.algorithm_name) + "_" +
                          str(all_args.experiment_name) +
+                         "_agents" + str(all_args.num_agents) +
                          "_seed" + str(all_args.seed),
                          group=all_args.scenario_name,
                          dir=str(run_dir),

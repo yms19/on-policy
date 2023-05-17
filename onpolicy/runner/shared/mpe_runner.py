@@ -43,7 +43,7 @@ def get_adv_action_dim4(num_agents, adv_strategy, obs, init_direction):
                 dist = np.sqrt(np.sum(np.square([obs[4+2*i], obs[5+2*i]])))
             dists.append(dist)
         if min(dists) == 100:
-            action_env[init_direction]=1
+            action_env[init_direction-1]=1
         else:
             dists_reciprocal = [1/x for x in dists]
             dists_reciprocal_sum = np.sqrt(np.sum(np.square(dists_reciprocal)))
@@ -117,9 +117,9 @@ def get_adv_action_dim7(num_agents, adv_strategy, obs, init_direction):
 def get_good_action(num_agents, obs, agent_id, step):
     adv_x = 4
     adv_y = 5
-    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
+    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05], [0, 0], [0, 0], [0, 0], [0, 0]]
     # target_pos = [[0.5, 0.5], [0.67, 0.67], [0.7, 0.4], [1, 0.8]]
-    target_pos = [[obs[18], obs[19]]] * 4
+    target_pos = [[obs[2+num_agents*4], obs[3+num_agents*4]]] * 8
     action_env = np.zeros(shape=(1, 7))
     detect_threshold = 0.02
     if obs[adv_x] == 0 and obs[adv_y] == 0:
@@ -140,8 +140,8 @@ def get_good_action(num_agents, obs, agent_id, step):
 def get_good_action_with_detect(num_agents, obs, agent_id, step, avail_action):
     adv_x = 4
     adv_y = 5
-    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05]]
-    adv_center = [obs[18], obs[19]]
+    init_pos = [[-0.05, 0], [0.05, 0], [0, -0.05], [0, 0.05], [0, 0], [0, 0], [0, 0], [0, 0]]
+    adv_center = [obs[2+num_agents*4], obs[3+num_agents*4]]
     target_pos1 = [adv_center, [adv_center[0]+0.17, adv_center[1]+0.17], [adv_center[0]+0.5, adv_center[1]-0.1], [adv_center[0]+0.5, adv_center[1]+0.3]]
     target_pos2 = [[adv_center[0]-0.2, adv_center[1]], [adv_center[0]+0.17, adv_center[1]+0.57], [adv_center[0]+0.7, adv_center[1]-0.1], [adv_center[0]+0.7, adv_center[1]+0.3]]
     action_env = np.zeros(shape=(1, 7))
@@ -543,6 +543,9 @@ class MPERunner(Runner):
                     else:
                         self.trainer.prep_rollout()
                         actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
+                        for thread_index in range(self.all_args.n_rollout_threads):
+                            actions_env_adv[thread_index] = get_adv_action_dim4(self.all_args.num_agents, adv_strategy,
+                                                                    self.adv_obs[thread_index], init_direction[thread_index])
                         actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
                         if (step-self.script_length) % self.inference_interval == 0:
                             action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
@@ -563,7 +566,7 @@ class MPERunner(Runner):
                             else:
                                 raise NotImplementedError
 
-                        print(actions)
+                        # print(actions)
                         actions_env_all = np.concatenate([actions_env_adv, actions], axis=1)
 
                     for thread_index in range(self.all_args.n_rollout_threads):                    

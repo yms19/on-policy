@@ -438,7 +438,7 @@ class MultiAgentEnv(gym.Env):
                         possible_range = "fan"
                         if possible_range == "fan":
                             guess_center = entity.init_pos
-                            init_range = 0.5
+                            init_range = 1
                             guess_v = 5.56 # m/s
                             run_dis = (840 + self.world.dt * self.current_step) *  guess_v / 1000 * 0.05
                             angle = math.pi/4
