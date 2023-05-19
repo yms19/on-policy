@@ -63,6 +63,12 @@ def parse_args(args, parser):
                         default=1, help="detection range of players")
     parser.add_argument('--adversary_speed', type=float,
                         default=0.0003, help="the speed of adversary")
+    parser.add_argument('--init_radius', type=float,
+                        default=0.5, help="initial range radius of adversary")
+    parser.add_argument('--init_angle', type=float,
+                        default=45, help="initial range angle of adversary")
+    parser.add_argument('--detect_noise', type=float,
+                        default=0, help="the standard deviation of noise that add to the observation of other agents' positions")
     parser.add_argument('--num_bubbles', type=int,
                         default=0, help="number of bubbies")
     parser.add_argument('--script_length', type=int,
