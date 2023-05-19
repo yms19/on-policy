@@ -163,7 +163,7 @@ class R_MAPPO():
 
         return value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights
 
-    def train(self, buffer, update_actor=True):
+    def train(self, buffer, role=None, update_actor=True):
         """
         Perform a training update using minibatch GD.
         :param buffer: (SharedReplayBuffer) buffer containing training data.
@@ -187,8 +187,8 @@ class R_MAPPO():
         train_info['value_loss'] = 0
         train_info['policy_loss'] = 0
         train_info['dist_entropy'] = 0
-        train_info['actor_grad_norm'] = 0
-        train_info['critic_grad_norm'] = 0
+        train_info['actor_grad_norm_' + role] = 0
+        train_info['critic_grad_norm_' + role] = 0
         train_info['ratio'] = 0
 
         for _ in range(self.ppo_epoch):
@@ -207,8 +207,8 @@ class R_MAPPO():
                 train_info['value_loss'] += value_loss.item()
                 train_info['policy_loss'] += policy_loss.item()
                 train_info['dist_entropy'] += dist_entropy.item()
-                train_info['actor_grad_norm'] += actor_grad_norm
-                train_info['critic_grad_norm'] += critic_grad_norm
+                train_info['actor_grad_norm_' + role] += actor_grad_norm
+                train_info['critic_grad_norm_' + role] += critic_grad_norm
                 train_info['ratio'] += imp_weights.mean()
 
         num_updates = self.ppo_epoch * self.num_mini_batch

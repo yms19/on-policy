@@ -73,6 +73,14 @@ def parse_args(args, parser):
                         default=0, help="number of bubbies")
     parser.add_argument('--script_length', type=int,
                         default=30, help="number of steps which script controls")
+    parser.add_argument('--save_history_interval', type=int,
+                        default=500, help="time duration between contiunous twice log save policy to policy pool.")
+    parser.add_argument("--model_dir_role1", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of adversaries.")
+    parser.add_argument("--model_dir_role2", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of good agents.")
+    parser.add_argument("--fix_adversary", action='store_true',
+                        default=False, help="by default, update adversary. If set, fix the adversary and do not update during training.")
 
     all_args = parser.parse_known_args(args)[0]
 
