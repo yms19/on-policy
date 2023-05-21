@@ -296,7 +296,108 @@ class SubprocVecEnv(ShareVecEnv):
         if mode == "rgb_array":   
             frame = [remote.recv() for remote in self.remotes]
             return np.stack(frame) 
+        
+def selfplayworker(remote, parent_remote, env_fn_wrapper):
+    parent_remote.close()
+    env = env_fn_wrapper.x()
+    while True:
+        cmd, data = remote.recv()
+        if cmd == 'step':
+            ob, reward, done, info, avail_action = env.step(data)
+            if 'bool' in done.__class__.__name__:
+                if done:
+                    ob, avail_action = env.reset()
+            else:
+                if np.all(done):
+                    ob, avail_action = env.reset()
 
+            remote.send((ob, reward, done, info, avail_action))
+        elif cmd == 'reset':
+            ob, avail_action = env.reset()
+            remote.send((ob, avail_action))
+        elif cmd == 'render':
+            if data == "rgb_array":
+                fr = env.render(mode=data)
+                remote.send(fr)
+            elif data == "human":
+                env.render(mode=data)
+        elif cmd == 'reset_task':
+            ob = env.reset_task()
+            remote.send(ob)
+        elif cmd == 'close':
+            env.close()
+            remote.close()
+            break
+        elif cmd == 'get_spaces':
+            remote.send((env.observation_space, env.share_observation_space, env.adv_action_space, env.inference_action_space))
+        else:
+            raise NotImplementedError
+        
+class SelfplayVecEnv(ShareVecEnv):
+    def __init__(self, env_fns, spaces=None):
+        """
+        envs: list of gym environments to run in subprocesses
+        """
+        self.waiting = False
+        self.closed = False
+        nenvs = len(env_fns)
+        self.remotes, self.work_remotes = zip(*[Pipe() for _ in range(nenvs)])
+        self.ps = [Process(target=selfplayworker, args=(work_remote, remote, CloudpickleWrapper(env_fn)))
+                   for (work_remote, remote, env_fn) in zip(self.work_remotes, self.remotes, env_fns)]
+        for p in self.ps:
+            p.daemon = True  # if the main process crashes, we should not cause things to hang
+            p.start()
+        for remote in self.work_remotes:
+            remote.close()
+
+        self.remotes[0].send(('get_spaces', None))
+        observation_space, share_observation_space, adv_action_space, action_space = self.remotes[0].recv()
+        self.adv_action_space = adv_action_space
+        ShareVecEnv.__init__(self, len(env_fns), observation_space,
+                             share_observation_space, action_space)
+
+    def step_async(self, actions):
+        for remote, action in zip(self.remotes, actions):
+            remote.send(('step', action))
+        self.waiting = True
+
+    def step_wait(self):
+        results = [remote.recv() for remote in self.remotes]
+        self.waiting = False
+        obs, rews, dones, infos, avail = zip(*results)
+        return np.stack(obs), np.stack(rews), np.stack(dones), infos, np.stack(avail)
+
+    def reset(self):
+        for remote in self.remotes:
+            remote.send(('reset', None))
+        results = [remote.recv() for remote in self.remotes]
+        obs, avail = zip(*results)
+        return np.stack(obs), np.stack(avail)
+
+
+    def reset_task(self):
+        for remote in self.remotes:
+            remote.send(('reset_task', None))
+        return np.stack([remote.recv() for remote in self.remotes])
+
+    def close(self):
+        if self.closed:
+            return
+        if self.waiting:
+            for remote in self.remotes:
+                remote.recv()
+        for remote in self.remotes:
+            remote.send(('close', None))
+        for p in self.ps:
+            p.join()
+        self.closed = True
+
+    def render(self, mode="rgb_array"):
+        for remote in self.remotes:
+            remote.send(('render', mode))
+        if mode == "rgb_array":   
+            frame = [remote.recv() for remote in self.remotes]
+            return np.stack(frame)
 
 def shareworker(remote, parent_remote, env_fn_wrapper):
     parent_remote.close()

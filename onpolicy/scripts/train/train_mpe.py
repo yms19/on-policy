@@ -9,7 +9,7 @@ from pathlib import Path
 import torch
 from onpolicy.config import get_config
 from onpolicy.envs.mpe.MPE_env import MPEEnv
-from onpolicy.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
+from onpolicy.envs.env_wrappers import SubprocVecEnv, SelfplayVecEnv, DummyVecEnv
 
 """Train script for MPEs."""
 
@@ -27,6 +27,8 @@ def make_train_env(all_args):
         return init_env
     if all_args.n_rollout_threads == 1:
         return DummyVecEnv([get_env_fn(0)])
+    elif all_args.use_selfplay:
+        return SelfplayVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
     else:
         return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
@@ -52,6 +54,8 @@ def make_eval_env(all_args):
 def parse_args(args, parser):
     parser.add_argument('--scenario_name', type=str,
                         default='simple_spread', help="Which scenario to run on")
+    parser.add_argument("--use_selfplay", action='store_true',
+                        default=False, help="Whether to use self-play")
     parser.add_argument("--num_landmarks", type=int, default=3)
     parser.add_argument('--num_agents', type=int,
                         default=2, help="number of players")
@@ -75,6 +79,14 @@ def parse_args(args, parser):
                         default=0, help="Max length for environment")
     parser.add_argument('--inference_interval', type=int,
                         default=0, help="time duration between contiunous twice inference")
+    parser.add_argument('--save_history_interval', type=int,
+                        default=500, help="time duration between contiunous twice log save policy to policy pool.")
+    parser.add_argument("--model_dir_role1", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of adversaries.")
+    parser.add_argument("--model_dir_role2", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of good agents.")
+    parser.add_argument("--fix_adversary", action='store_true',
+                        default=False, help="by default, update adversary. If set, fix the adversary and do not update during training.")
     all_args = parser.parse_known_args(args)[0]
 
     return all_args
@@ -121,7 +133,7 @@ def main(args):
                          notes=socket.gethostname(),
                          name=str(all_args.algorithm_name) + "_" +
                          str(all_args.experiment_name) +
-                         "_agents" + str(all_args.num_agents) +
+                         "_agents" + str(all_args.num_good_agents) +
                          "_seed" + str(all_args.seed),
                          group=all_args.scenario_name,
                          dir=str(run_dir),

@@ -93,7 +93,8 @@ class MultiAgentEnv(gym.Env):
             else:
                 self.action_space.append(total_action_space[0])
 
-            self.inference_action_space = [MultiDiscrete([[0, 1], [0, 1], [0, 6], [0, 5]])] # [右左，上下， 右左格数， 上下格数]
+            self.adv_action_space = [spaces.Discrete(world.dim_p * 2 + 3)]
+            self.inference_action_space = [MultiDiscrete([[0, 1], [0, 1], [0, 7], [0, 6]])] # [右左，上下， 右左格数， 上下格数]
             
             # observation space
             obs_dim = len(observation_callback(agent, self.world))
@@ -340,16 +341,19 @@ class MultiAgentEnv(gym.Env):
     
     def _set_available_action(self, agent):
         avail_action = np.ones(7)
-        if self.current_step < 0:
-            avail_action[5] = 0
-        if agent.detected:
-            avail_action[:5] = np.zeros((5))
-            if agent.dtime >= 180:
-                avail_action[5] = 0
+        if agent.adversary:
+            avail_action[5:]=np.zeros((2))
         else:
-            avail_action[6] = 0
-        if agent.dcount >= 2:
-            avail_action[5] = 0
+            if self.current_step < 0:
+                avail_action[5] = 0
+            if agent.detected:
+                avail_action[:5] = np.zeros((5))
+                if agent.dtime >= 180:
+                    avail_action[5] = 0
+            else:
+                avail_action[6] = 0
+            if agent.dcount >= 2:
+                avail_action[5] = 0
         
         return avail_action
 

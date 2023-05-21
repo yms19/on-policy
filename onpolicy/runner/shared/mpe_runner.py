@@ -1,12 +1,14 @@
 import time
 import numpy as np
 import torch
-from onpolicy.runner.shared.base_runner import Runner
 from pyvirtualdisplay.smartdisplay import SmartDisplay
 from PIL import Image, ImageDraw, ImageFont
 import wandb
 import imageio
 import pdb
+
+from onpolicy.runner.shared.base_runner import Runner
+from onpolicy.utils.shared_buffer import SharedReplayBuffer, SharedReplayAdvBuffer
 
 def _t2n(x):
     return x.detach().cpu().numpy()
@@ -246,12 +248,12 @@ class MPERunner(Runner):
         self.policy = {'adv':Policy(self.all_args,
                     self.envs.observation_space[0],
                     share_observation_space,
-                    self.envs.action_space[0],
+                    self.envs.adv_action_space[0],
                     device = self.device),
                 'good':Policy(self.all_args,
                     self.envs.observation_space[0],
                     share_observation_space,
-                    self.envs.action_space[self.num_adversaries],
+                    self.envs.action_space[0],
                     device = self.device)}
         
         for role_id in self.role:
@@ -263,16 +265,16 @@ class MPERunner(Runner):
                         'good':TrainAlgo(self.all_args, self.policy['good'], device = self.device)}        
         
         # buffer
-        self.buffer = {'adv': SharedReplayBuffer(self.all_args,
+        self.buffer = {'adv': SharedReplayAdvBuffer(self.all_args,
                                     self.num_adversaries,
                                     self.envs.observation_space[0],
                                     share_observation_space,
-                                    self.envs.action_space[0]),
+                                    self.envs.adv_action_space[0]),
                         'good': SharedReplayBuffer(self.all_args,
                                     self.num_good_agents,
                                     self.envs.observation_space[0],
                                     share_observation_space,
-                                    self.envs.action_space[self.num_adversaries])}
+                                    self.envs.action_space[0])}
 
     def restore(self, role):
         """Restore policy's networks from a saved model."""
@@ -315,73 +317,94 @@ class MPERunner(Runner):
 
     def run(self):
         self.warmup()
-        obs = self.buffer.obs[0]
+        # obs = self.buffer.obs[0]
         # available_actions = self.buffer.available_actions[0] 
 
         start = time.time()
-        episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
+        episodes = int(self.num_env_steps) // (self.episode_length*self.inference_interval) // self.n_rollout_threads
         win_count = 0
         fail_count = 0
         adv_strategy = 'escape_nearest'
 
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads))
-            accu_rewards = np.zeros((self.n_rollout_threads, self.num_agents+1, 1))
+            accu_rewards = np.zeros((self.n_rollout_threads, self.num_good_agents, 1))
             win = np.zeros((self.n_rollout_threads))
             win_step = np.zeros((self.n_rollout_threads))
             if self.use_linear_lr_decay:
                 self.trainer.policy.lr_decay(episode, episodes)            
                 
+            actions_env_roles = {}
+            values_roles = {}
+            actions_roles = {}
+            action_log_probs_roles = {}
+            rnn_states_roles = {}
+            rnn_states_critic_roles = {}
             for step in range(self.world_length):
+
                 # Sample actions
                 if step < self.script_length:
-                    actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
-                    actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 7])
-                    actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
-                    for thread_index in range(self.all_args.n_rollout_threads):
-                        for agent_index in range(self.num_agents):
-                            actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step)
-                        actions_env_adv[thread_index] = get_adv_action_dim7(self.all_args.num_agents, adv_strategy,
-                                                                self.adv_obs[thread_index], init_direction[thread_index])
-                    actions_env_all = np.concatenate([actions_env_adv, actions_env], axis=1)
-                            # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
-                    # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
+                    for role_id in self.role:
+                        role_range = self.num_agents_range[role_id]
+                        actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents_role[role_id], 7])
+                        obs = self.buffer[role_id].obs[0]
+                        for thread_index in range(self.all_args.n_rollout_threads):
+                            for agent_index in range(self.num_agents_role[role_id]):
+                                    if role_id == "adv":
+                                        actions_env[thread_index][agent_index] = get_adv_action_dim7(self.num_good_agents, adv_strategy, obs[thread_index][agent_index], init_direction)
+                                    elif role_id == "good":
+                                        actions_env[thread_index][agent_index] = get_good_action(self.num_good_agents, obs[thread_index][agent_index], agent_index, step)
+                        actions_env_roles[role_id] = actions_env
+                                # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
+                        # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
-                    actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
-                    actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
-                    for thread_index in range(self.all_args.n_rollout_threads):                    
-                        actions_env_adv[thread_index] = get_adv_action_dim4(self.all_args.num_agents, adv_strategy,
-                                                                self.adv_obs[thread_index], init_direction[thread_index])
-                        
+                    # adv
+                    values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step-self.script_length, role='adv')
+                    values_roles['adv'] = values
+                    actions_roles['adv'] = actions
+                    action_log_probs_roles['adv'] = action_log_probs
+                    rnn_states_roles['adv'] = rnn_states
+                    rnn_states_critic_roles['adv'] = rnn_states_critic
+                    actions_env_roles['adv'] = actions_env[:, :, 1:5]
+
                     if (step-self.script_length) % self.inference_interval == 0:
                         step_inference = (step-self.script_length) // self.inference_interval
-                        values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step_inference)
+                        values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env = self.collect(step_inference, role='good')
+                        values_roles['good'] = values
+                        actions_roles['good'] = actions
+                        action_log_probs_roles['good'] = action_log_probs
+                        rnn_states_roles['good'] = rnn_states
+                        rnn_states_critic_roles['good'] = rnn_states_critic
+                        actions_env_roles['good'] = actions
                         accu_rewards = accu_rewards*0
 
-                    actions_env_all = np.concatenate([actions_env_adv, actions], axis=1)
                 # pdb.set_trace()
-                    
+                
+                actions_env_all = np.concatenate([actions_env_roles['adv'], actions_env_roles['good']], axis=1)
                 # Obser reward and next obs
                 # print("step%d action"%step, actions_env_all[0][1], actions_env_all[0][2], actions_env_all[0][3], actions_env_all[0][4])
                 obs, rewards, dones, infos, available_actions = self.envs.step(actions_env_all)
-                accu_rewards += rewards
-                self.adv_obs = obs[:, 0, :].copy()
+                accu_rewards += rewards[:, 1:, :]
 
                 if step == self.script_length - 1:
-                    # if self.use_centralized_V:
-                    #     share_obs = obs.reshape(self.n_rollout_threads, -1)
-                    #     share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
-                    # else:
-                    #     share_obs = obs
-                    share_obs = _get_attn_share_obs(obs)[:, 1:, :]
+                    if self.use_centralized_V:
+                        share_obs = obs.reshape(self.n_rollout_threads, -1)
+                        share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+                    else:
+                        share_obs = obs
+                    # share_obs = _get_attn_share_obs(obs)[:, 1:, :]
 
-                    self.buffer.share_obs[0] = share_obs.copy()
-                    self.buffer.obs[0] = obs[:, 1:, :].copy()
+                    for role_id in self.role:
+                        role_range = self.num_agents_range[role_id]
+                        self.buffer[role_id].share_obs[0] = share_obs[:,role_range[0]:role_range[1]+1].copy()
+                        self.buffer[role_id].obs[0] = obs[:,role_range[0]:role_range[1]+1].copy()
+                        if role_id == 'adv':
+                            self.buffer[role_id].available_actions[0] = available_actions[:,role_range[0]:role_range[1]+1].copy()
                     # self.buffer.available_actions[0] = available_actions[:, 1:, :].copy()
 
                 for thread_index in range(self.all_args.n_rollout_threads):
-                    for agent_index in range(self.num_agents):
-                        if infos[thread_index][agent_index+1]['detect_adversary']:
+                    for agent_index in range(self.num_adversaries,self.num_agents):
+                        if infos[thread_index][agent_index]['detect_adversary']:
                             win[thread_index] = 1
                             if win_step[thread_index]==0:
                                 win_step[thread_index] = step+1
@@ -392,31 +415,59 @@ class MPERunner(Runner):
                 #     print("eval average episode rewards of agent%i: " % i + str(rewards[:, :,]))
 
                 # print("step%d obs"%step, obs[0][1],obs[0][2],obs[0][3],obs[0][3])
-                if step >= self.script_length and ((step-self.script_length) % self.inference_interval == (self.inference_interval - 1)):
-                    data = obs, accu_rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic
+                if step >= self.script_length:
+                    infos_role = {}
+                    for role_id in self.role:
+                        if role_id == "adv":
+                            role_range = self.num_agents_range[role_id]
+                            infos_role_one = []
+                            for thread in range(self.n_rollout_threads):
+                                infos_role_one.append(infos[thread][role_range[0]:role_range[1]+1])
+                            infos_role[role_id] = infos_role_one
+                            # use all agents obs to get critic share obs
+                            data = obs, rewards[:,role_range[0]:role_range[1]+1], dones[:,role_range[0]:role_range[1]+1], infos_role[role_id], available_actions[:,role_range[0]:role_range[1]+1], \
+                                    values_roles[role_id], actions_roles[role_id], action_log_probs_roles[role_id], rnn_states_roles[role_id], rnn_states_critic_roles[role_id]
 
-                    # insert data into buffer
-                    self.insert(data)
+                            # insert data into buffer
+                            self.insert(data, role=role_id)
+                        else:
+                            if ((step-self.script_length) % self.inference_interval == (self.inference_interval - 1)):
+                                role_range = self.num_agents_range[role_id]
+                                infos_role_one = []
+                                for thread in range(self.n_rollout_threads):
+                                    infos_role_one.append(infos[thread][role_range[0]:role_range[1]+1])
+                                infos_role[role_id] = infos_role_one
+                                # use all agents obs to get critic share obs
+                                data = obs, accu_rewards, dones[:,role_range[0]:role_range[1]+1], infos_role[role_id], available_actions[:,role_range[0]:role_range[1]+1], \
+                                        values_roles[role_id], actions_roles[role_id], action_log_probs_roles[role_id], rnn_states_roles[role_id], rnn_states_critic_roles[role_id]
+
+                                # insert data into buffer
+                                self.insert(data, role=role_id)
+
                 # print("finish episode {} step {}".format(episode,step))                
-            # for i in range(self.num_agents):
-            #     average_episode_rewards = np.sum(self.buffer.rewards[:, :, i])
-            #     print("eval average episode rewards of agent%i: " % i + str(average_episode_rewards))
 
             # compute return and update network
             win_count += np.sum(win)
             fail_count += self.all_args.n_rollout_threads - np.sum(win)
             # print("episode{} average episode rewards is {}".format(episode, np.mean(self.buffer.rewards) * self.episode_length))
-            self.compute()
-            train_infos = self.train()
+            train_infos = {}
+            for role_id in self.role:
+                if role_id == "adv":
+                    if self.all_args.fix_adversary: continue
+                self.compute(role=role_id)
+                train_infos[role_id] = self.train(role=role_id)
             # train_infos = {}
             
             # post process
-            total_num_steps = (episode + 1) * self.episode_length * self.n_rollout_threads
+            total_num_steps = (episode + 1) * (self.episode_length*self.inference_interval) * self.n_rollout_threads
             
             # save model
             if (episode % self.save_interval == 0 or episode == episodes - 1):
                 # print("\nModel save to {}".format(self.save_dir))
-                self.save()
+                for role_id in self.role:
+                    if role_id == "adv":
+                        if self.all_args.fix_adversary: continue
+                    self.save(role_id)
 
             # log information
             if episode % self.log_interval == 0:
@@ -436,17 +487,23 @@ class MPERunner(Runner):
                     for agent_id in range(self.num_agents):
                         idv_rews = []
                         for info in infos:
-                            if 'individual_reward' in info[agent_id+1].keys():
-                                idv_rews.append(info[agent_id+1]['individual_reward'])
-                        agent_k = 'agent%i/individual_rewards' % (agent_id+1)
+                            if 'individual_reward' in info[agent_id].keys():
+                                idv_rews.append(info[agent_id]['individual_reward'])
+                        agent_k = 'agent%i/individual_rewards' % (agent_id)
                         env_infos[agent_k] = idv_rews
 
-                train_infos["average_episode_rewards"] = np.mean(self.buffer.rewards) * self.episode_length
-                train_infos["win_rate"] = win_count / (win_count + fail_count)
-                train_infos["average_detect_step"] = np.sum(win_step)/win_count
-                print("average episode rewards is {}".format(train_infos["average_episode_rewards"]))
-                print("win rate is {:.2f}%".format(train_infos["win_rate"]*100))
-                self.log_train(train_infos, total_num_steps)
+                for role_id in self.role:
+                    if role_id == "adv":
+                        if self.all_args.fix_adversary: continue
+                    train_infos[role_id]["average_episode_rewards"] = np.mean(self.buffer[role_id].rewards) * self.episode_length
+                    print("average_episode_rewards of " + role_id + " is {}".format(train_infos[role_id]["average_episode_rewards"]))
+                train_infos["good"]["win_rate"] = win_count / (win_count + fail_count)
+                train_infos["good"]["average_detect_step"] = np.sum(win_step)/win_count
+                print("win rate is {:.2f}%".format(train_infos["good"]["win_rate"]*100))
+                for role_id in self.role:
+                    if role_id == "adv":
+                        if self.all_args.fix_adversary: continue
+                    self.log_train(train_infos[role_id], total_num_steps)
                 self.log_env(env_infos, total_num_steps)
                 win_count = 0
                 fail_count = 0
@@ -458,32 +515,50 @@ class MPERunner(Runner):
     def warmup(self):
         # reset env
         obs, available_actions = self.envs.reset()
-        self.adv_obs = obs[:, 0, :].copy()        
+        obs_adv = obs[:, 0:self.num_adversaries,:]
+        obs_good = obs[:, self.num_adversaries:, :]
+        avail_adv = available_actions[:, 0:self.num_adversaries,:]
+        avail_good = available_actions[:, self.num_adversaries:, :]      
 
         # replay buffer
-        # if self.use_centralized_V:
-        #     share_obs = obs.reshape(self.n_rollout_threads, -1)
-        #     share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
-        # else:
-        #     share_obs = obs
+        if self.use_centralized_V:
+            share_obs = obs.reshape(self.n_rollout_threads, -1)
+            share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+        else:
+            share_obs = obs
 
-        share_obs =  _get_attn_share_obs(obs)[:, 1:, :]
-        obs = obs[:, 1:, :]
-        available_actions = available_actions[:, 1:, :]
-        self.buffer.share_obs[0] = share_obs.copy()
-        self.buffer.obs[0] = obs.copy()
-        # self.buffer.available_actions[0] = available_actions.copy()
+        share_obs_adv = share_obs[:, 0:self.num_adversaries,:]
+        share_obs_good = share_obs[:, self.num_adversaries:, :] 
+
+        self.buffer["adv"].share_obs[0] = share_obs_adv.copy()
+        self.buffer["adv"].obs[0] = obs_adv.copy()
+        self.buffer["adv"].available_actions[0] = avail_adv.copy()
+        self.buffer["good"].share_obs[0] = share_obs_good.copy()
+        self.buffer["good"].obs[0] = obs_good.copy()
+        # self.buffer["good"].available_actions[0] = avail_good.copy()
 
     @torch.no_grad()
-    def collect(self, step):
-        self.trainer.prep_rollout()
-        value, action, action_log_prob, rnn_states, rnn_states_critic \
-            = self.trainer.policy.get_actions(np.concatenate(self.buffer.share_obs[step]),
-                            np.concatenate(self.buffer.obs[step]),
-                            np.concatenate(self.buffer.rnn_states[step]),
-                            np.concatenate(self.buffer.rnn_states_critic[step]),
-                            np.concatenate(self.buffer.masks[step])
-                            )
+    def collect(self, step, role=None):
+        self.trainer[role].prep_rollout()
+        role_range = self.num_agents_range[role]
+        if role == "adv":
+            value, action, action_log_prob, rnn_states, rnn_states_critic \
+                = self.trainer[role].policy.get_actions(np.concatenate(self.buffer[role].share_obs[step]),
+                                np.concatenate(self.buffer[role].obs[step]),
+                                np.concatenate(self.buffer[role].rnn_states[step]),
+                                np.concatenate(self.buffer[role].rnn_states_critic[step]),
+                                np.concatenate(self.buffer[role].masks[step]),
+                                np.concatenate(self.buffer[role].available_actions[step])
+                                )
+        else:
+            # good agents (waypoints) do not use available actions
+            value, action, action_log_prob, rnn_states, rnn_states_critic \
+                = self.trainer[role].policy.get_actions(np.concatenate(self.buffer[role].share_obs[step]),
+                                np.concatenate(self.buffer[role].obs[step]),
+                                np.concatenate(self.buffer[role].rnn_states[step]),
+                                np.concatenate(self.buffer[role].rnn_states_critic[step]),
+                                np.concatenate(self.buffer[role].masks[step]),
+                                )
         # [self.envs, agents, dim]
         values = np.array(np.split(_t2n(value), self.n_rollout_threads))
         actions = np.array(np.split(_t2n(action), self.n_rollout_threads))
@@ -491,39 +566,58 @@ class MPERunner(Runner):
         rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
         rnn_states_critic = np.array(np.split(_t2n(rnn_states_critic), self.n_rollout_threads))
         # rearrange action
-        if self.envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
-            for i in range(self.envs.action_space[0].shape):
-                uc_actions_env = np.eye(self.envs.action_space[0].high[i] + 1)[actions[:, :, i]]
-                if i == 0:
-                    actions_env = uc_actions_env
-                else:
-                    actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
-        elif self.envs.action_space[0].__class__.__name__ == 'Discrete':
-            actions_env = np.squeeze(np.eye(self.envs.action_space[0].n)[actions], 2)
+        if role == "adv":
+            if self.envs.adv_action_space[0].__class__.__name__ == 'MultiDiscrete':
+                for i in range(self.envs.adv_action_space[0].shape):
+                    uc_actions_env = np.eye(self.envs.adv_action_space[0].high[i] + 1)[actions[:, :, i]]
+                    if i == 0:
+                        actions_env = uc_actions_env
+                    else:
+                        actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+            elif self.envs.adv_action_space[0].__class__.__name__ == 'Discrete':
+                actions_env = np.squeeze(np.eye(self.envs.adv_action_space[role_range[0]].n)[actions], 2)
+            else:
+                raise NotImplementedError
         else:
-            raise NotImplementedError
+            if self.envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
+                for i in range(self.envs.action_space[0].shape):
+                    uc_actions_env = np.eye(self.envs.action_space[0].high[i] + 1)[actions[:, :, i]]
+                    if i == 0:
+                        actions_env = uc_actions_env
+                    else:
+                        actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+            elif self.envs.action_space[0].__class__.__name__ == 'Discrete':
+                actions_env = np.squeeze(np.eye(self.envs.action_space[role_range[0]].n)[actions], 2)
+            else:
+                raise NotImplementedError
 
         return values, actions, action_log_probs, rnn_states, rnn_states_critic, actions_env
 
-    def insert(self, data):
-        obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic = data        
-        dones = dones[:, 1:]
-        rewards = rewards[:, 1:, :]
+    def insert(self, data, role=None):
+        obs, rewards, dones, infos, available_actions, values, actions, action_log_probs, rnn_states, rnn_states_critic = data
         
-
         rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
-        rnn_states_critic[dones == True] = np.zeros(((dones == True).sum(), *self.buffer.rnn_states_critic.shape[3:]), dtype=np.float32)
-        masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+        rnn_states_critic[dones == True] = np.zeros(((dones == True).sum(), *self.buffer[role].rnn_states_critic.shape[3:]), dtype=np.float32)
+        if role=='adv':
+            masks = np.ones((self.n_rollout_threads, self.num_adversaries, 1), dtype=np.float32)
+        elif role=='good':
+            masks = np.ones((self.n_rollout_threads, self.num_good_agents, 1), dtype=np.float32)
         masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
 
-        # if self.use_centralized_V:
-        #     share_obs = obs.reshape(self.n_rollout_threads, -1)
-        #     share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
-        # else:
-        #     share_obs = obs
-        share_obs = _get_attn_share_obs(obs)[:, 1:, :]
+        if self.use_centralized_V:
+            share_obs = obs.reshape(self.n_rollout_threads, -1)
+            share_obs = np.expand_dims(share_obs, 1).repeat(self.num_agents, axis=1)
+        else:
+            share_obs = obs
 
-        self.buffer.insert(share_obs, obs[:, 1:, :], rnn_states, rnn_states_critic, actions, action_log_probs, values, rewards, masks)
+        role_range = self.num_agents_range[role]
+
+        if role == 'adv':
+            self.buffer[role].insert(share_obs[:,role_range[0]:role_range[1]+1], obs[:,role_range[0]:role_range[1]+1], rnn_states, 
+                                    rnn_states_critic, actions, action_log_probs, values, rewards, masks, available_actions=available_actions)
+        else:
+            self.buffer[role].insert(share_obs[:,role_range[0]:role_range[1]+1], obs[:,role_range[0]:role_range[1]+1], rnn_states, 
+                                    rnn_states_critic, actions, action_log_probs, values, rewards, masks)
 
     @torch.no_grad()
     def eval(self, total_num_steps):
