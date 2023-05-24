@@ -261,7 +261,6 @@ class MPERunner(Runner):
                             # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
                     # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
-                    print(step)
                     actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
                     actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
                     for thread_index in range(self.all_args.n_rollout_threads):                    
