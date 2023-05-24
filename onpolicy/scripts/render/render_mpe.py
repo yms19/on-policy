@@ -49,6 +49,10 @@ def parse_args(args, parser):
                         default=1, help="detection range of players")
     parser.add_argument('--adversary_speed', type=float,
                         default=0.0003, help="the speed of adversary")
+    parser.add_argument('--p_noise', type=float,
+                        default=0, help="the probability of noise that add to the observation of other agents' positions")
+    parser.add_argument('--detect_noise', type=float,
+                        default=0, help="the standard deviation of noise that add to the observation of other agents' positions")
     parser.add_argument('--script_length', type=int,
                         default=30, help="number of steps which script controls")
 
