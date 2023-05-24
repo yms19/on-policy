@@ -50,7 +50,7 @@ def adversary_possible_range(init_center, pos, time):
         delta_x, delta_y = pos1 - pos2
         return math.atan2(delta_y, delta_x)
     
-    init_radius = 1
+    init_radius = 0.5
     init_angle = math.pi / 4
     velocity = 5.56 # m/s
 
@@ -111,9 +111,9 @@ def in_range(left, right, up, down, pos):
 
 def get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, step):    
     possible_grid_count = 0
-    probability_grid = np.zeros((9, 7))
+    probability_grid = np.zeros((7, 6))
     if np.any(adversary_pos): # 有一个智能体探测到了敌方：只有敌方所在格点置1
-        row = min(int(adversary_pos[0] // 0.25), 8)
+        row = min(int(adversary_pos[0] // 0.25), 6)
         col = min(int(adversary_pos[1] // 0.25),5)
         probability_grid[row, col] = 1
     else:   # 没有智能体探测到敌方：将所有正在进行探测的智能体探测范围内概率置0
@@ -123,11 +123,11 @@ def get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, step)
 
         for index in detect_agent_index:
             agent_pos = agent_pos_all[index]
-            agent_row = min(int(agent_pos[0] // 0.25), 8)
-            agent_col = min(int(agent_pos[1] // 0.25), 6)
+            agent_row = min(int(agent_pos[0] // 0.25), 6)
+            agent_col = min(int(agent_pos[1] // 0.25), 5)
             probability_grid[agent_row, agent_col] = 0
         
-    return probability_grid.reshape((9*7)).tolist()
+    return probability_grid.reshape((7*6)).tolist()
 
 class Scenario(BaseScenario):
     def make_world(self, args):
@@ -146,6 +146,7 @@ class Scenario(BaseScenario):
         world.world_length = args.world_length
         world.script_length = args.world_length - args.episode_length * args.inference_interval
         world.inference_interval = args.inference_interval
+        world.p_noise = args.p_noise
         world.detect_noise = args.detect_noise
         # init_angle = adversary_init_angle(270, 360)
         init_angle = 0
@@ -196,7 +197,7 @@ class Scenario(BaseScenario):
         init_angle = 0
 
         run_dis = 5.56 /1000 * 0.05 * 840 # v_adv = 5.56 m/s
-        init_radius = 1.5
+        init_radius = 1
                
         for i, agent in enumerate(world.agents):
             agent.dtime = 0
@@ -369,6 +370,7 @@ class Scenario(BaseScenario):
         comm = []
         other_pos = []
         other_vel = []
+        p_noise = world.p_noise
         detect_noise = world.detect_noise
 
         agent_pos_all = []
@@ -389,18 +391,24 @@ class Scenario(BaseScenario):
                 if not other.adversary:
                     other_vel.append((other.state.p_vel) * (1 - mask))
             other_vel = other_vel[:-1]
-            probability_grid = np.zeros((9*7)).tolist()
+            probability_grid = np.zeros((7*6)).tolist()
         else:
             for other in world.agents:
                 if other is agent or other.dummy: continue
                 mask = 1 if not detect_adversary else 0
                 comm.append(other.state.c)
                 if other.adversary:
-                    noise = np.random.normal(0, detect_noise,(2))
+                    if np.random.random() <= p_noise:
+                        noise = np.random.normal(0, detect_noise,(2))
+                    else:
+                        noise = 0
                     other_pos.append((other.state.p_pos - agent.state.p_pos + noise) * (1 - mask))
                     adversary_pos = (other.state.p_pos + noise) * (1 - mask)
                 else:
-                    noise = np.random.normal(0, detect_noise, (2))
+                    if np.random.random() <= p_noise:
+                        noise = np.random.normal(0, detect_noise, (2))
+                    else:
+                        noise = 0
                     other_pos.append((other.state.p_pos - agent.state.p_pos + noise))
                     agent_pos_all.append(other.state.p_pos+noise)
                     agent_detect_state.append(other.detected)

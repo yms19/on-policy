@@ -221,96 +221,10 @@ class MPERunner(Runner):
     """Runner class to perform training, evaluation. and data collection for the MPEs. See parent class for details."""
     def __init__(self, config):
         super(MPERunner, self).__init__(config)
+        self.adv_obs = np.zeros((self.all_args.n_rollout_threads, 1, *self.envs.observation_space[0].shape))
         self.inference_interval = self.all_args.inference_interval
         self.world_length = self.all_args.world_length
         self.script_length = self.all_args.world_length - self.all_args.episode_length * self.all_args.inference_interval
-        self.save_history_interval = self.all_args.save_history_interval
-        self.num_adversaries = self.all_args.num_adversaries
-        self.num_good_agents = self.all_args.num_good_agents
-        self.num_agents = self.num_adversaries + self.num_good_agents
-        self.role = ["adv", "good"]
-        self.num_agents_role = {'adv': self.num_adversaries, 'good': self.num_good_agents}
-        self.num_agents_range = {'adv':[0,self.num_adversaries-1],'good':[self.num_adversaries,self.num_adversaries+self.num_good_agents-1]}
-
-        # dir
-        self.model_dir = {}
-        self.model_dir['adv'] = self.all_args.model_dir_role1
-        self.model_dir['good'] = self.all_args.model_dir_role2
-
-        from onpolicy.algorithms.r_mappo.r_mappo import R_MAPPO as TrainAlgo
-        from onpolicy.algorithms.r_mappo.algorithm.rMAPPOPolicy import R_MAPPOPolicy as Policy
-
-        share_observation_space = self.envs.share_observation_space[0] if self.use_centralized_V else self.envs.observation_space[0]
-
-        # policy network
-        self.policy = {'adv':Policy(self.all_args,
-                    self.envs.observation_space[0],
-                    share_observation_space,
-                    self.envs.action_space[0],
-                    device = self.device),
-                'good':Policy(self.all_args,
-                    self.envs.observation_space[0],
-                    share_observation_space,
-                    self.envs.action_space[self.num_adversaries],
-                    device = self.device)}
-        
-        for role_id in self.role:
-            if self.model_dir[role_id] is not None:
-                self.restore(role_id)
-        
-        # algorithm
-        self.trainer = {'adv':TrainAlgo(self.all_args, self.policy['adv'], device = self.device),
-                        'good':TrainAlgo(self.all_args, self.policy['good'], device = self.device)}        
-        
-        # buffer
-        self.buffer = {'adv': SharedReplayBuffer(self.all_args,
-                                    self.num_adversaries,
-                                    self.envs.observation_space[0],
-                                    share_observation_space,
-                                    self.envs.action_space[0]),
-                        'good': SharedReplayBuffer(self.all_args,
-                                    self.num_good_agents,
-                                    self.envs.observation_space[0],
-                                    share_observation_space,
-                                    self.envs.action_space[self.num_adversaries])}
-
-    def restore(self, role):
-        """Restore policy's networks from a saved model."""
-        policy_actor_state_dict = torch.load(str(self.model_dir[role]) + '/actor_%s.pt' % role)
-        self.policy[role].actor.load_state_dict(policy_actor_state_dict)
-        if not self.all_args.use_render:
-            policy_critic_state_dict = torch.load(str(self.model_dir[role]) + '/critic_%s.pt' % role)
-            self.policy[role].critic.load_state_dict(policy_critic_state_dict)
-
-    def save(self, role):
-        """Save policy's actor and critic networks."""
-        policy_actor = self.trainer[role].policy.actor
-        torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s.pt" % role)
-        policy_critic = self.trainer[role].policy.critic
-        torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s.pt" % role)
-
-    def save_history(self, role, idx):
-        """Save history policy's actor and critic networks to policy pool."""
-        policy_actor = self.trainer[role].policy.actor
-        torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s_%d.pt" % (role, idx))
-        policy_critic = self.trainer[role].policy.critic
-        torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s_%d.pt" % (role, idx))
-
-    def compute(self, role=None):
-        """Calculate returns for the collected data."""
-        self.trainer[role].prep_rollout()
-        next_values = self.trainer[role].policy.get_values(np.concatenate(self.buffer[role].share_obs[-1]),
-                                                np.concatenate(self.buffer[role].rnn_states_critic[-1]),
-                                                np.concatenate(self.buffer[role].masks[-1]))
-        next_values = np.array(np.split(_t2n(next_values), self.n_rollout_threads))
-        self.buffer[role].compute_returns(next_values, self.trainer[role].value_normalizer)
-    
-    def train(self, role=None):
-        """Train policies with data in buffer. """
-        self.trainer[role].prep_training()
-        train_infos = self.trainer[role].train(self.buffer[role], role)      
-        self.buffer[role].after_update()
-        return train_infos
     
 
     def run(self):
@@ -347,6 +261,7 @@ class MPERunner(Runner):
                             # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index-self.num_agents][2], obs[thread_index][agent_index-self.num_agents][3]))
                     # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
                 else:
+                    print(step)
                     actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
                     actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
                     for thread_index in range(self.all_args.n_rollout_threads):                    

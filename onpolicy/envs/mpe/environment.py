@@ -140,6 +140,9 @@ class MultiAgentEnv(gym.Env):
         输入: action_one: [右左，上下， 右左格数， 上下格数]
         输出: action_env: [静止, 右, 左, 上, 下, 开始探测, 结束探测]
         """
+        if len(action_one)==7:
+            return action_one
+        
         if (self.current_step-self.script_length-1) % self.inference_interval == 0:
             self._set_target_pos(agent, action_one)
         
@@ -167,6 +170,8 @@ class MultiAgentEnv(gym.Env):
         输入: action_one: 四维动作 [右, 左, 上, 下]
         输出: action_env: 七维动作 [静止, 右, 左, 上, 下, 开始探测, 结束探测]
         """
+        if len(action_one)==7:
+            return action_one
         action_env = np.zeros(7)
         action_env[1:5] = action_one
     

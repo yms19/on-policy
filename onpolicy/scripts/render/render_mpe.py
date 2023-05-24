@@ -53,6 +53,8 @@ def parse_args(args, parser):
                         default=0.5, help="initial range radius of adversary")
     parser.add_argument('--init_angle', type=float,
                         default=45, help="initial range angle of adversary")
+    parser.add_argument('--p_noise', type=float,
+                        default=0, help="the probability of noise that add to the observation of other agents' positions")
     parser.add_argument('--detect_noise', type=float,
                         default=0, help="the standard deviation of noise that add to the observation of other agents' positions")
     parser.add_argument('--world_length', type=int,
