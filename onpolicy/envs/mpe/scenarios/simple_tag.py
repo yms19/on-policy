@@ -378,6 +378,13 @@ class Scenario(BaseScenario):
         detect_adversary = False
         agent_detect_state = []
         agent_detect_state.append(agent.detected)
+
+        if np.random.random() <= p_noise:
+            noise = np.random.normal(0, detect_noise,(2))
+        else:
+            noise = 0
+        self_pos = agent.state.p_pos + noise
+
         for agent_ in self.good_agents(world):
             if agent_.detected and self.is_detected(agent_, world.agents[0]):
                 detect_adversary = True
@@ -417,7 +424,7 @@ class Scenario(BaseScenario):
             probability_grid = get_probability_grid(adversary_pos, agent_pos_all, agent_detect_state, world.world_step%world.world_length)
         detected = 1 if agent.detected else 0
         # return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + entity_pos + other_pos + other_vel)
-        return np.concatenate([agent.state.p_vel] + [agent.state.p_pos] + other_pos + other_vel + [np.array([detected])] \
+        return np.concatenate([agent.state.p_vel] + [self_pos] + other_pos + other_vel + [np.array([detected])] \
                               + [self.adversaries(world)[0].init_pos] + [probability_grid])
     
     def info(self, agent, world):

@@ -236,7 +236,7 @@ class MPERunner(Runner):
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
         win_count = 0
         fail_count = 0
-        adv_strategy = 'escape_nearest'
+        adv_strategy = 'escape_group'
 
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads))
