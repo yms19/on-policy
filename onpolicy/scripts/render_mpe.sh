@@ -7,7 +7,7 @@ num_good_agents=4
 num_adversaries=1
 d_range=0.25
 algo="rmappo"
-exp="way_points(noise)"
+exp="way_points(selfplay)"
 seed_max=1
 
 echo "env is ${env}"
@@ -20,5 +20,7 @@ do
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 1 \
     --n_training_threads 1 --n_rollout_threads 1 --use_render \
     --episode_length 12 --world_length 240 --inference_interval 15 --render_episodes 100 --use_wandb \
-    --model_dir "./results/MPE/simple_tag/rmappo/way_points/wandb/run-20230514_033841-1vc5vuvd/files"
+    --model_dir_role2 "./results/MPE/simple_tag/rmappo/way_points(escape_group)/wandb/run-20230526_044819-2nvj0ae3/files" 
+    # --model_dir_role1 "./results/MPE/simple_tag/rmappo/waypoints(selfplay)/wandb/run-20230526_161743-1a04k2d1/files" \
+    # --model_dir_role2 "./results/MPE/simple_tag/rmappo/waypoints(selfplay)/wandb/run-20230526_161743-1a04k2d1/files" 
 done

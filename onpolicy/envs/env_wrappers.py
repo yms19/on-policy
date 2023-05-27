@@ -803,6 +803,52 @@ class DummyVecEnv(ShareVecEnv):
                 env.render(mode=mode)
         else:
             raise NotImplementedError
+        
+        # single env
+class SelfplayDummyVecEnv(ShareVecEnv):
+    def __init__(self, env_fns):
+        self.envs = [fn() for fn in env_fns]
+        env = self.envs[0]
+        self.adv_action_space = env.adv_action_space
+        ShareVecEnv.__init__(self, len(
+            env_fns), env.observation_space, env.share_observation_space, env.inference_action_space)
+        self.actions = None
+
+    def step_async(self, actions):
+        self.actions = actions
+
+    def step_wait(self):
+        results = [env.step(a) for (a, env) in zip(self.actions, self.envs)]
+        obs, rews, dones, infos, avails = map(np.array, zip(*results))
+
+        for (i, done) in enumerate(dones):
+            if 'bool' in done.__class__.__name__:
+                if done:
+                    obs[i], avails[i] = self.envs[i].reset()
+            else:
+                if np.all(done):
+                    obs[i], avails[i] = self.envs[i].reset()
+
+        self.actions = None
+        return obs, rews, dones, infos, avails
+
+    def reset(self):
+        results = [env.reset() for env in self.envs]
+        obs, avail = zip(*results)
+        return np.array(obs), np.array(avail)
+
+    def close(self):
+        for env in self.envs:
+            env.close()
+
+    def render(self, mode="human"):
+        if mode == "rgb_array":
+            return np.array([env.render(mode=mode) for env in self.envs])
+        elif mode == "human":
+            for env in self.envs:
+                env.render(mode=mode)
+        else:
+            raise NotImplementedError
 
 
 

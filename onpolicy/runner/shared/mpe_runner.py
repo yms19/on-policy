@@ -313,13 +313,6 @@ class MPERunner(Runner):
             policy_critic = self.trainer[role].policy.critic
             torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s.pt" % role)
 
-    def save_history(self, role, idx):
-        """Save history policy's actor and critic networks to policy pool."""
-        policy_actor = self.trainer[role].policy.actor
-        torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s_%d.pt" % (role, idx))
-        policy_critic = self.trainer[role].policy.critic
-        torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s_%d.pt" % (role, idx))
-
     def compute(self, role=None):
         """Calculate returns for the collected data."""
         self.trainer[role].prep_rollout()
@@ -351,6 +344,8 @@ class MPERunner(Runner):
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads))
             accu_rewards = np.zeros((self.n_rollout_threads, self.num_good_agents, 1))
+            win_count = 0
+            fail_count = 0
             win = np.zeros((self.n_rollout_threads))
             win_step = np.zeros((self.n_rollout_threads))
             if self.use_linear_lr_decay:
@@ -700,7 +695,7 @@ class MPERunner(Runner):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
             win = False
             win_step = np.zeros((self.n_rollout_threads))
-            print("init_pos: ({}, {})".format(self.adv_obs[0][2], self.adv_obs[0][3]))
+            print("init_pos: ({}, {})".format(obs[0][0][2], obs[0][0][3]))
             infos = [[{'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
                     {'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
                     {'individual_reward': 0, 'detect_times': 0, 'detect_adversary': False},
@@ -717,6 +712,7 @@ class MPERunner(Runner):
 
             rnn_states_roles = {}
             masks_roles = {}
+            actions_env_roles = {}
             for role_id in self.role:
                 role_range = self.num_agents_role[role_id]
                 role_num = self.num_agents_role[role_id]
@@ -729,75 +725,105 @@ class MPERunner(Runner):
                 calc_start = time.time()
                 adv_strategy = 'escape_group'
                 mode = "scripts"
-                vels = []
+                vels = {}
 
-                if self.all_args.model_dir is not None:
-                    if step < self.script_length:
-                        actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents, 7])
-                        actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 7])
-                        actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 7])
-                        for thread_index in range(self.all_args.n_rollout_threads):
-                            for agent_index in range(self.num_agents):
-                                actions_env[thread_index][agent_index] = get_good_action(self.num_agents, obs[thread_index][agent_index-self.num_agents], agent_index, step)
-                            actions_env_adv[thread_index] = get_adv_action_dim7(self.all_args.num_agents, adv_strategy,
-                                                                    self.adv_obs[thread_index], init_direction[thread_index])
-                        actions_env_all = np.concatenate([actions_env_adv, actions_env], axis=1)
-                                # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
-                        # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
-                    else:
-                        self.trainer.prep_rollout()
-                        actions_env_adv = np.zeros([self.all_args.n_rollout_threads, 1, 4])
-                        for thread_index in range(self.all_args.n_rollout_threads):
-                            actions_env_adv[thread_index] = get_adv_action_dim4(self.all_args.num_agents, adv_strategy,
-                                                                    self.adv_obs[thread_index], init_direction[thread_index])
-                        actions_env_all = np.zeros([self.all_args.n_rollout_threads, self.num_agents+1, 4])
-                        if (step-self.script_length) % self.inference_interval == 0:
-                            action, rnn_states = self.trainer.policy.act(np.concatenate(obs),
-                                                            np.concatenate(rnn_states),
-                                                            np.concatenate(masks),
-                                                            deterministic=True)
-                            actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
-                            rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
-                            if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
-                                for i in range(envs.action_space[0].shape):
-                                    uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
-                                    if i == 0:
-                                        actions_env = uc_actions_env
+                for role_id in self.role:
+                    role_range = self.num_agents_range[role_id]
+                    vels[role_id] = []
+                    if self.model_dir[role_id] is not None:
+                        if step < self.script_length:
+                            actions_env = np.zeros([self.all_args.n_rollout_threads, self.num_agents_role[role_id], 7])
+                            for thread_index in range(self.all_args.n_rollout_threads):
+                                for agent_index in range(role_range[0], role_range[1]+1):
+                                    if role_id == "adv":
+                                        actions_env[thread_index][agent_index] = get_adv_action_dim7(self.num_good_agents, adv_strategy,
+                                                                                                obs[thread_index][agent_index], init_direction)
+                                    elif role_id == "good":
+                                        actions_env[thread_index][agent_index-self.num_adversaries] = get_good_action(self.num_good_agents, obs[thread_index][agent_index], 
+                                                                                                agent_index-self.num_adversaries, step)
+                                    vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
+                                    vels[role_id].append(vel)
+                            actions_env_roles[role_id] = actions_env
+                                    # print("step{} obs of agent{}: ({}, {})".format(step, agent_index, obs[thread_index][agent_index][2], obs[thread_index][agent_index][3]))
+                            # print("step%d action"%step, np.argmax(actions_env[0][0]), np.argmax(actions_env[0][1]), np.argmax(actions_env[0][2]), np.argmax(actions_env[0][3]))
+                        else:
+                            self.trainer[role_id].prep_rollout()
+                            if role_id == 'adv':
+                                action, rnn_states = self.trainer[role_id].policy.act(np.concatenate(obs[:,role_range[0]:role_range[1]+1 ,:]),
+                                                                np.concatenate(rnn_states_roles[role_id]),
+                                                                np.concatenate(masks_roles[role_id]),
+                                                                np.concatenate(avail_actions[:,role_range[0]:role_range[1]+1 ,:]),
+                                                                deterministic=True)
+                                actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
+                                rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+                                rnn_states_roles[role_id] = rnn_states
+                                if envs.adv_action_space[0].__class__.__name__ == 'MultiDiscrete':
+                                    for i in range(envs.adv_action_space[0].shape):
+                                        uc_actions_env = np.eye(envs.adv_action_space[0].high[i]+1)[actions[:, :, i]]
+                                        if i == 0:
+                                            actions_env = uc_actions_env
+                                        else:
+                                            actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+                                elif envs.adv_action_space[0].__class__.__name__ == 'Discrete':
+                                    actions_env = np.squeeze(np.eye(envs.adv_action_space[0].n)[actions], 2)
+                                else:
+                                    raise NotImplementedError
+                                actions_env_roles[role_id] = actions_env
+                            else:
+                                if (step-self.script_length) % self.inference_interval == 0:
+                                    action, rnn_states = self.trainer[role_id].policy.act(np.concatenate(obs[:,role_range[0]:role_range[1]+1 ,:]),
+                                                                    np.concatenate(rnn_states_roles[role_id]),
+                                                                    np.concatenate(masks_roles[role_id]),
+                                                                    deterministic=True)
+                                    actions = np.array(np.split(_t2n(action), self.n_rollout_threads))                        
+                                    rnn_states = np.array(np.split(_t2n(rnn_states), self.n_rollout_threads))
+                                    rnn_states_roles[role_id] = rnn_states
+                                    if envs.action_space[0].__class__.__name__ == 'MultiDiscrete':
+                                        for i in range(envs.action_space[0].shape):
+                                            uc_actions_env = np.eye(envs.action_space[0].high[i]+1)[actions[:, :, i]]
+                                            if i == 0:
+                                                actions_env = uc_actions_env
+                                            else:
+                                                actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
+                                    elif envs.action_space[0].__class__.__name__ == 'Discrete':
+                                        actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
                                     else:
-                                        actions_env = np.concatenate((actions_env, uc_actions_env), axis=2)
-                            elif envs.action_space[0].__class__.__name__ == 'Discrete':
-                                actions_env = np.squeeze(np.eye(envs.action_space[0].n)[actions], 2)
+                                        raise NotImplementedError
+                                    actions_env_roles[role_id] = actions
+                            
+                            for thread_index in range(self.n_rollout_threads):                            
+                                for agent_index in range(role_range[0], role_range[1]+1):
+                                    vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
+                                    vels[role_id].append(vel)
+
+                    else:
+                        role_num = self.num_agents_role[role_id]
+                        actions_env = np.zeros((self.n_rollout_threads, role_num, 7))
+                        for thread_index in range(self.n_rollout_threads):
+                            if role_id == "adv":
+                                for agent_index in range(role_range[0], role_range[1]+1):
+                                    action = get_adv_action_dim7(self.num_good_agents, adv_strategy, obs[thread_index][agent_index],  init_direction[thread_index])
+                                    actions_env[thread_index][agent_index] = action
+                                    vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
+                                    vels[role_id].append(vel)
+                            elif role_id == "good":
+                                for agent_index in range(role_range[0], role_range[1]+1):
+                                    action = get_good_action_with_detect(self.num_good_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
+                                    actions_env[thread_index][agent_index-self.num_adversaries] = action
+                                    vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
+                                    vels[role_id].append(vel)
                             else:
                                 raise NotImplementedError
+                        actions_env_roles[role_id] = actions_env
 
-                        # print(actions)
-                        actions_env_all = np.concatenate([actions_env_adv, actions], axis=1)
-
-                    for thread_index in range(self.all_args.n_rollout_threads):                    
-                        vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
-                        vels.append(vel)
-                        for agent_index in range(self.num_agents):
-                            vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
-                            vels.append(vel)
                     # pdb.set_trace()
-
-
-                else:
-                    actions_env_all = np.zeros(shape=(self.n_rollout_threads, self.num_agents+1, 7))
-                    for thread_index in range(self.n_rollout_threads):
-                        adv_action = get_adv_action_dim7(self.num_agents, adv_strategy, self.adv_obs[thread_index],  init_direction[thread_index])
-                        actions_env_all[thread_index][0] = adv_action
-                        vel = np.sqrt(np.sum(np.square([self.adv_obs[thread_index][0], self.adv_obs[thread_index][1]]))) / 0.05 * 1000
-                        vels.append(vel)
-                        for agent_index in range(self.num_agents):
-                            action = get_good_action_with_detect(self.num_agents, obs[thread_index][agent_index], agent_index, step, avail_actions[thread_index][agent_index])
-                            actions_env_all[thread_index][agent_index+1] = action
-                            vel = np.sqrt(np.sum(np.square([obs[thread_index][agent_index][0], obs[thread_index][agent_index][1]]))) / 0.05 * 1000
-                            vels.append(vel)
 
                 # actions_env = np.zeros(shape=(self.n_rollout_threads, self.num_agents, 5))
 
                 # Obser reward and next obs
+                if actions_env_roles['good'].shape[-1]==4:
+                    actions_env_roles['adv'] = actions_env_roles['adv'][:, :, 1:5]
+                actions_env_all = np.concatenate([actions_env_roles['adv'], actions_env_roles['good']], axis=1)
                 obs, rewards, dones, infos, avail_actions = envs.step(actions_env_all)
                 # print("step%d reward"%step, rewards[0][0], rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
                 # print("step%d avail"%step,  avail_actions[0][1], avail_actions[0][2], avail_actions[0][3], avail_actions[0][4])
@@ -805,26 +831,27 @@ class MPERunner(Runner):
                 # print(obs[0][1],obs[0][2],obs[0][3],obs[0][3])
 
                 for thread_index in range(self.all_args.n_rollout_threads):
-                    for agent_index in range(self.num_agents):
+                    for agent_index in range(self.num_good_agents):
                         if infos[thread_index][agent_index+1]['detect_adversary'] and win_step[thread_index]==0:
                                 win_step[thread_index] = step+1
 
-                self.adv_obs = obs[:, 0, :].copy()
-                obs = obs[:, 1:, :]
-                rewards = rewards[:, 1:, :]
-                dones = dones[:, 1:]
-                avail_actions = avail_actions[:, 1:, :]
-                episode_rewards.append(rewards)
+                episode_rewards.append(rewards[:, self.num_adversaries:, :])
 
-                for i in range(1, self.num_agents+1):
+                for i in range(1, self.num_good_agents+1):
                     if infos[0][i]["detect_adversary"]:
                         win = True
                 
                 # print("step%d reward"%step, rewards[0][1], rewards[0][2], rewards[0][3], rewards[0][4])
 
-                rnn_states[dones == True] = np.zeros(((dones == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
-                masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
-                masks[dones == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
+                for role_id in self.role:
+                    role_range = self.num_agents_range[role_id]
+                    role_num = self.num_agents_role[role_id]
+
+                    rnn_states_roles[role_id][dones[:, role_range[0]:role_range[1]+1] == True] = np.zeros(((dones[:, role_range[0]:role_range[1]+1] == True).sum(), self.recurrent_N, self.hidden_size), dtype=np.float32)
+                    masks = np.ones((self.n_rollout_threads, role_num, 1), dtype=np.float32)
+                    masks[dones[:, role_range[0]:role_range[1]+1] == True] = np.zeros(((dones[:, role_range[0]:role_range[1]+1] == True).sum(), 1), dtype=np.float32)
+
+                    masks_roles[role_id] = masks
 
                 agent_info = "agent{} :   velocity : {:.2f}m/s    detect times : {}    detect the adversary : {}"
                 adversary_info = "agent{} :   (adversary) velocity : {:.2f}m/s    detect the adversary : {}    mode : {}"
@@ -838,7 +865,7 @@ class MPERunner(Runner):
                     img_pil = Image.fromarray(img, mode='RGB')
                     ttf = ImageFont.load_default()
                     img_draw = ImageDraw.Draw(img_pil)
-                    for i in range(self.num_agents+1):  
+                    for i in range(self.num_agents):  
                         if i == 0:
                             img_draw.text((20, 20+15*i), adversary_info.format(i, vels[i], infos[0][i]["detect_adversary"], mode), font=ttf, fill=(0, 0, 0))
                         else:
@@ -867,7 +894,7 @@ class MPERunner(Runner):
 
             episode_rewards = np.array(episode_rewards)
             print("result of episode %i:" % episode)
-            for agent_id in range(self.num_agents):
+            for agent_id in range(self.num_good_agents):
                 average_episode_rewards = np.mean(np.sum(episode_rewards[:, :, agent_id], axis=0))
                 print("eval average episode rewards of agent%i: " % agent_id + str(average_episode_rewards))
                 accumulate_reward[agent_id] += average_episode_rewards            
@@ -878,6 +905,6 @@ class MPERunner(Runner):
         
         print("win: {}\nfail: {}\nwin rate: {} %".format(win_count, fail_count, 100*win_count/(win_count+fail_count)))
         print("The average number of probe steps consumed is {}".format(step_count/win_count))
-        for agent_id in range(self.num_agents):
+        for agent_id in range(self.num_good_agents):
             print("accumulative average episode rewards of agent%i: " % agent_id + str(accumulate_reward[agent_id]/self.all_args.render_episodes))
         

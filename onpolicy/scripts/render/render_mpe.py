@@ -14,7 +14,7 @@ import torch
 from onpolicy.config import get_config
 
 from onpolicy.envs.mpe.MPE_env import MPEEnv
-from onpolicy.envs.env_wrappers import SubprocVecEnv, DummyVecEnv
+from onpolicy.envs.env_wrappers import SelfplayVecEnv, SelfplayDummyVecEnv
 
 def make_render_env(all_args):
     def get_env_fn(rank):
@@ -29,9 +29,9 @@ def make_render_env(all_args):
             return env
         return init_env
     if all_args.n_rollout_threads == 1:
-        return DummyVecEnv([get_env_fn(0)])
+        return SelfplayDummyVecEnv([get_env_fn(0)])
     else:
-        return SubprocVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
+        return SelfplayVecEnv([get_env_fn(i) for i in range(all_args.n_rollout_threads)])
 
 def parse_args(args, parser):
     parser.add_argument('--scenario_name', type=str,
@@ -61,6 +61,8 @@ def parse_args(args, parser):
                         default=None, help="by default None. set the path to pretrained model of adversaries.")
     parser.add_argument("--model_dir_role2", type=str, 
                         default=None, help="by default None. set the path to pretrained model of good agents.")
+    parser.add_argument('--save_history_interval', type=int,
+                        default=500, help="time duration between contiunous twice log save policy to policy pool.")
     parser.add_argument('--inference_interval', type=int,
                         default=0, help="time duration between contiunous twice inference")
 
