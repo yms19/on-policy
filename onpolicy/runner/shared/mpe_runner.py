@@ -241,6 +241,8 @@ class MPERunner(Runner):
         for episode in range(episodes):
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads))
             accu_rewards = np.zeros((self.n_rollout_threads, self.num_agents+1, 1))
+            win_count = 0
+            fail_count = 0
             win = np.zeros((self.n_rollout_threads))
             win_step = np.zeros((self.n_rollout_threads))
             if self.use_linear_lr_decay:
@@ -499,7 +501,7 @@ class MPERunner(Runner):
             obs = obs[:, 1:, :]
             avail_actions = avail_actions[:, 1:, :]
             
-            init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
+            init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) 
             win = False
             win_step = np.zeros((self.n_rollout_threads))
             print("init_pos: ({}, {})".format(self.adv_obs[0][2], self.adv_obs[0][3]))
@@ -524,7 +526,7 @@ class MPERunner(Runner):
             
             for step in range(self.world_length):
                 calc_start = time.time()
-                adv_strategy = 'escape_group'
+                adv_strategy = 'escape_nearest'
                 mode = "scripts"
                 vels = []
 
