@@ -57,6 +57,10 @@ def parse_args(args, parser):
                         default=0, help="the standard deviation of noise that add to the observation of other agents' positions")
     parser.add_argument('--world_length', type=int,
                         default=0, help="Max length for environment")
+    parser.add_argument("--model_dir_role1", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of adversaries.")
+    parser.add_argument("--model_dir_role2", type=str, 
+                        default=None, help="by default None. set the path to pretrained model of good agents.")
     parser.add_argument('--inference_interval', type=int,
                         default=0, help="time duration between contiunous twice inference")
 

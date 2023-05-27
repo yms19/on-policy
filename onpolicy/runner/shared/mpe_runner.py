@@ -276,20 +276,42 @@ class MPERunner(Runner):
                                     share_observation_space,
                                     self.envs.action_space[0])}
 
-    def restore(self, role):
+    def restore(self, role, episode=None):
         """Restore policy's networks from a saved model."""
-        policy_actor_state_dict = torch.load(str(self.model_dir[role]) + '/actor_%s.pt' % role)
-        self.policy[role].actor.load_state_dict(policy_actor_state_dict)
-        if not self.all_args.use_render:
-            policy_critic_state_dict = torch.load(str(self.model_dir[role]) + '/critic_%s.pt' % role)
-            self.policy[role].critic.load_state_dict(policy_critic_state_dict)
+        if role == "adv":
+            if episode is not None:
+                policy_actor_state_dict = torch.load(str(self.model_dir[role]) + '/actor_%s_%d.pt' % (role, episode))
+            else:
+                policy_actor_state_dict = torch.load(str(self.model_dir[role]) + '/actor_%s.pt' % role)
+            self.policy[role].actor.load_state_dict(policy_actor_state_dict)
+            if not self.all_args.use_render:
+                if episode is not None:
+                    policy_critic_state_dict = torch.load(str(self.model_dir[role]) + '/critic_%s_%d.pt' % (role, episode))
+                else:
+                    policy_critic_state_dict = torch.load(str(self.model_dir[role]) + '/critic_%s.pt' % role)
+                self.policy[role].critic.load_state_dict(policy_critic_state_dict)
+        else:
+            policy_actor_state_dict = torch.load(str(self.model_dir[role]) + '/actor_%s.pt' % role)
+            self.policy[role].actor.load_state_dict(policy_actor_state_dict)
+            if not self.all_args.use_render:
+                policy_critic_state_dict = torch.load(str(self.model_dir[role]) + '/critic_%s.pt' % role)
+                self.policy[role].critic.load_state_dict(policy_critic_state_dict)
 
-    def save(self, role):
+    def save(self, role, episode):
         """Save policy's actor and critic networks."""
-        policy_actor = self.trainer[role].policy.actor
-        torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s.pt" % role)
-        policy_critic = self.trainer[role].policy.critic
-        torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s.pt" % role)
+        if role == "adv":
+            policy_actor = self.trainer[role].policy.actor
+            torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s_%d.pt" % (role, episode))
+            # save latest model
+            torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s.pt" % role)
+            policy_critic = self.trainer[role].policy.critic
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s_%d.pt" % (role, episode))
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s.pt" % role)
+        else:
+            policy_actor = self.trainer[role].policy.actor
+            torch.save(policy_actor.state_dict(), str(self.save_dir) + "/actor_%s.pt" % role)
+            policy_critic = self.trainer[role].policy.critic
+            torch.save(policy_critic.state_dict(), str(self.save_dir) + "/critic_%s.pt" % role)
 
     def save_history(self, role, idx):
         """Save history policy's actor and critic networks to policy pool."""
@@ -467,7 +489,7 @@ class MPERunner(Runner):
                 for role_id in self.role:
                     if role_id == "adv":
                         if self.all_args.fix_adversary: continue
-                    self.save(role_id)
+                    self.save(role_id, episode)
 
             # log information
             if episode % self.log_interval == 0:
@@ -675,10 +697,6 @@ class MPERunner(Runner):
         accumulate_reward = np.zeros((self.all_args.num_good_agents))
         for episode in range(self.all_args.render_episodes):
             obs, avail_actions = envs.reset()
-            self.adv_obs = obs[:, 0, :].copy()
-            obs = obs[:, 1:, :]
-            avail_actions = avail_actions[:, 1:, :]
-            
             init_direction = np.random.randint(4, size=(self.all_args.n_rollout_threads)) + 1
             win = False
             win_step = np.zeros((self.n_rollout_threads))
@@ -697,8 +715,13 @@ class MPERunner(Runner):
             # else:
             #     envs.render('human')
 
-            rnn_states = np.zeros((self.n_rollout_threads, self.num_agents, self.recurrent_N, self.hidden_size), dtype=np.float32)
-            masks = np.ones((self.n_rollout_threads, self.num_agents, 1), dtype=np.float32)
+            rnn_states_roles = {}
+            masks_roles = {}
+            for role_id in self.role:
+                role_range = self.num_agents_role[role_id]
+                role_num = self.num_agents_role[role_id]
+                rnn_states_roles[role_id] = np.zeros((self.n_rollout_threads, role_num, self.recurrent_N, self.hidden_size), dtype=np.float32)
+                masks_roles[role_id] = np.ones((self.n_rollout_threads, role_num, 1), dtype=np.float32)
             
             episode_rewards = []
             
