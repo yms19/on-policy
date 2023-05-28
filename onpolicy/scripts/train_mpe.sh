@@ -8,7 +8,7 @@ num_adversaries=1
 d_range=0.25
 algo="rmappo"
 exp="way_points(larger)"
-seed_max=3
+seed_max=1
 
 echo "env is ${env}, scenario is ${scenario}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
 for seed in `seq ${seed_max}`;
@@ -18,7 +18,7 @@ do
     --algorithm_name ${algo} --experiment_name ${exp} --scenario_name ${scenario} \
     --num_agents ${num_agents} --num_landmarks ${num_landmarks} --seed 3 \
     --num_good_agents ${num_good_agents} --num_adversaries ${num_adversaries} \
-    --d_range ${d_range} --adversary_speed 0.0003 --init_radius 1 --init_angle 45 --detect_noise 0 \
+    --d_range ${d_range} --adversary_speed 0.0006 --init_radius 1 --init_angle 45 --detect_noise 0 \
     --n_training_threads 1 --n_rollout_threads 256 --num_mini_batch 1 \
     --episode_length 12 --world_length 240 --inference_interval 15 \
     --num_env_steps 3000000 --ppo_epoch 10 --use_ReLU --activation_id 0 --gain 0.01 --lr 7e-4 --critic_lr 7e-4 --entropy_coef 0.05 \
