@@ -50,7 +50,7 @@ def adversary_possible_range(init_center, pos, time):
         delta_x, delta_y = pos1 - pos2
         return math.atan2(delta_y, delta_x)
     
-    init_radius = 0.5
+    init_radius = 1
     init_angle = math.pi / 4
     velocity = 5.56 # m/s
 
@@ -197,7 +197,7 @@ class Scenario(BaseScenario):
         init_angle = 0
 
         run_dis = 5.56 /1000 * 0.05 * 840 # v_adv = 5.56 m/s
-        init_radius = 1
+        init_radius = 1.5
                
         for i, agent in enumerate(world.agents):
             agent.dtime = 0

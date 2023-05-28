@@ -7,7 +7,7 @@ num_good_agents=4
 num_adversaries=1
 d_range=0.25
 algo="rmappo"
-exp="way_points(test_step_group)"
+exp="way_points(larger)"
 seed_max=3
 
 echo "env is ${env}, scenario is ${scenario}, algo is ${algo}, exp is ${exp}, max seed is ${seed_max}"
